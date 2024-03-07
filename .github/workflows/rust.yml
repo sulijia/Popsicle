@@ -20,7 +20,7 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
         profile: minimal
-        toolchain: stable
+        toolchain: nightly
         target: wasm32-unknown-unknown
         override: true
         components: rustfmt, clippy
@@ -35,7 +35,7 @@ jobs:
     - name: Rustfmt
       uses: actions-rs/cargo@v1
       with:
-        toolchain: stable
+        toolchain: nightly
         command: fmt
         args: --all --check
 
