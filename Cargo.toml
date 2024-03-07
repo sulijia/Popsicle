@@ -122,9 +122,7 @@ parachains-common = { version = "4.0.0", default-features = false }
 
 # Polkadot
 pallet-xcm = { version = "4.0.0", default-features = false }
-polkadot-cli = { version = "4.0.0", features = [
-  "rococo-native",
-] }
+polkadot-cli = { version = "4.0.0" }
 polkadot-parachain-primitives = { version = "3.0.0", default-features = false }
 polkadot-primitives = { version = "4.0.0", default-features = false }
 polkadot-runtime-common = { version = "4.0.0", default-features = false }
