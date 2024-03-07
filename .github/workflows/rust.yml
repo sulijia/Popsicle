@@ -17,10 +17,10 @@ jobs:
     steps:
 
     - name: Rust Setup
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@master
       with:
         profile: minimal
-        toolchain: nightly
+        toolchain: nightly-2023-11-20
         target: wasm32-unknown-unknown
         override: true
         components: rustfmt, clippy
@@ -33,9 +33,10 @@ jobs:
     - uses: actions/checkout@v3
     
     - name: Rustfmt
-      uses: actions-rs/cargo@v1
+      uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: nightly
+        toolchain: nightly-2023-11-20
+        override: true
         command: fmt
         args: --all --check
 
