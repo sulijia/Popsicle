@@ -193,6 +193,12 @@ pub mod popsicle {
 		let alice = get_from_seed::<sr25519::Public>("Alice");
 		let bob = get_from_seed::<sr25519::Public>("Bob");
 
+		// If root key is not in endowed accounts, add it.
+		let mut endowed_accounts = endowed_accounts;
+		if !endowed_accounts.contains(&root_key) {
+			endowed_accounts.push(root_key.clone());
+		}
+
 		popsicle_runtime::RuntimeGenesisConfig {
 			system: popsicle_runtime::SystemConfig {
 				code: popsicle_runtime::WASM_BINARY
@@ -201,13 +207,7 @@ pub mod popsicle {
 				..Default::default()
 			},
 			balances: popsicle_runtime::BalancesConfig {
-				balances: endowed_accounts
-					.iter()
-					.cloned()
-					// Fund sudo key for sending transactions
-					.chain(std::iter::once(root_key.clone()))
-					.map(|k| (k, 1 << 60))
-					.collect(),
+				balances: endowed_accounts.iter().cloned().map(|k| (k, 1 << 60)).collect(),
 			},
 			// Configure two assets ALT1 & ALT2 with two owners, alice and bob respectively
 			assets: popsicle_runtime::AssetsConfig {
