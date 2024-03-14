@@ -48,6 +48,7 @@ pallet-authorship = { version = "25.0.0", default-features = false }
 pallet-assets = { version = "26.0.0", default-features = false }
 pallet-balances = { version = "25.0.0", default-features = false }
 pallet-collective = { version = "25.0.0", default-features = false }
+pallet-sequencer-grouping = { path = "pallets/sequencer-grouping", default-features = false}
 pallet-membership = { version = "25.0.0", default-features = false }
 pallet-session = { version = "25.0.0", default-features = false }
 pallet-sudo = { version = "25.0.0", default-features = false }
