@@ -8,9 +8,10 @@ mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
-	use frame_support::{dispatch::DispatchResultWithPostInfo, pallet_prelude::*};
+	use frame_support::pallet_prelude::*;
 	use frame_support::traits::{BuildGenesisConfig, Randomness};
 	use frame_system::pallet_prelude::*;
+	use sp_runtime::traits::Hash;
 
 	/// Pallet for sequencer grouping
 	#[pallet::pallet]
@@ -31,11 +32,13 @@ pub mod pallet {
 	}
 
 	pub trait SequencerGroup<T: Config> {
-		fn trigger_group(candidates: Vec<T::AccountId>, starting_block: u64, round_index: u32) -> DispatchResultWithPostInfo;
+		fn trigger_group(candidates: Vec<T::AccountId>, starting_block: u64, round_index: u32) -> Result<(), DispatchError>;
+		fn account_in_group(account: T::AccountId) -> Result<u32, DispatchError>;
+		fn all_group_ids() -> Vec<u32>;
 	}
 
-	#[pallet::storage]
-	pub type RandomSeed<T: Config> = StorageValue<_, u64, ValueQuery>;
+	// #[pallet::storage]
+	// pub type RandomSeed<T: Config> = StorageValue<_, u64, ValueQuery>;
 
 	#[pallet::storage]
 	pub type GroupMembers<T: Config> = StorageValue<_, BoundedVec<BoundedVec<T::AccountId, T::MaxGroupSize>, T::MaxGroupNumber>, ValueQuery>;
@@ -78,6 +81,7 @@ pub mod pallet {
 		CandidatesNotEnough,
 		GroupSizeTooLarge,
 		GroupNumberTooLarge,
+		AccountNotInGroup,
 	}
 
 	#[pallet::event]
@@ -106,15 +110,31 @@ pub mod pallet {
 		}
 	}
 
-	impl<T: Config> Pallet<T> {
-		fn get_and_increment_nonce() -> Vec<u8> {
-			let random_seed = RandomSeed::<T>::get();
-			RandomSeed::<T>::put(random_seed.wrapping_add(1));
-			random_seed.encode()
+	pub struct SimpleRandomness<T>(PhantomData<T>);
+
+	impl<T: Config> Randomness<T::Hash, BlockNumberFor<T>> for SimpleRandomness<T> {
+		fn random(subject: &[u8]) -> (T::Hash, BlockNumberFor<T>) {
+			let hash = T::Hashing::hash(subject);
+			let current_block = frame_system::Pallet::<T>::block_number();
+			(hash, current_block)
 		}
 
+		fn random_seed() -> (T::Hash, BlockNumberFor<T>) {
+			Self::random(b"seed")
+		}
+	}
+
+	impl<T: Config> Pallet<T> {
+		// fn get_and_increment_nonce() -> Vec<u8> {
+		// 	let random_seed = RandomSeed::<T>::get();
+		// 	RandomSeed::<T>::put(random_seed.wrapping_add(1));
+		// 	random_seed.encode()
+		// }
+
 		pub fn shuffle_accounts(mut accounts: Vec<T::AccountId>) -> Vec<T::AccountId> {
-			let random_seed = Self::get_and_increment_nonce();
+			// let random_seed = Self::get_and_increment_nonce();
+			let random_seed = frame_system::Pallet::<T>::parent_hash().encode();
+			println!("parent hash: {:?}", frame_system::Pallet::<T>::parent_hash());
 			let random_value = T::Randomness::random(&random_seed);
 			let random_value = <u64>::decode(&mut random_value.0.as_ref()).unwrap_or(0);
 
@@ -128,8 +148,8 @@ pub mod pallet {
     }
 
 	impl<T: Config> SequencerGroup<T> for Pallet<T> {
-        fn trigger_group(candidates: Vec<T::AccountId>, starting_block: u64, round_index: u32) -> DispatchResultWithPostInfo {
-            // check if the length of candidates is enough to form groups required
+		fn trigger_group(candidates: Vec<T::AccountId>, starting_block: u64, round_index: u32) -> DispatchResult {
+			// check if the length of candidates is enough to form groups required
 			let group_size = GroupSize::<T>::get();
 			let group_number = GroupNumber::<T>::get();
 			ensure!(candidates.len() >= (group_size * group_number) as usize, Error::<T>::CandidatesNotEnough);
@@ -152,7 +172,22 @@ pub mod pallet {
 				starting_block,
 				round_index,
 			});
-			Ok(().into())
-        }
-    }
+			Ok(())
+		}
+
+		fn account_in_group(account: T::AccountId) -> Result<u32, DispatchError> {
+			let groups = GroupMembers::<T>::get();
+			for (index, group) in groups.iter().enumerate() {
+				if group.contains(&account) {
+					return Ok(index as u32);
+				}
+			}
+			Err(Error::<T>::AccountNotInGroup.into())
+		}
+
+		fn all_group_ids() -> Vec<u32> {
+			let group_count = GroupMembers::<T>::get().len();
+			(0..group_count as u32).collect()
+		}
+	}
 }
