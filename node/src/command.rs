@@ -73,9 +73,8 @@ fn load_spec(id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
 		path => {
 			let path: PathBuf = path.into();
 			match path.runtime() {
-				Runtime::Popsicle | Runtime::Default => {
-					Box::new(chain_spec::PopsicleChainSpec::from_json_file(path)?)
-				},
+				Runtime::Popsicle | Runtime::Default =>
+					Box::new(chain_spec::PopsicleChainSpec::from_json_file(path)?),
 			}
 		},
 	})

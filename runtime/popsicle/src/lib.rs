@@ -13,12 +13,12 @@ pub use fee::WeightToFee;
 use cumulus_pallet_parachain_system::RelayNumberMonotonicallyIncreases;
 use cumulus_primitives_core::{AssetId, Concrete};
 use sp_api::impl_runtime_apis;
-use sp_core::{crypto::KeyTypeId, ConstBool, OpaqueMetadata};
+use sp_core::{crypto::KeyTypeId, ConstBool, ConstU128, OpaqueMetadata};
 use sp_runtime::{
 	create_runtime_str, generic, impl_opaque_keys,
 	traits::{AccountIdLookup, BlakeTwo256, Block as BlockT},
 	transaction_validity::{TransactionSource, TransactionValidity},
-	ApplyExtrinsicResult,
+	ApplyExtrinsicResult, DispatchErrorWithPostInfo,
 };
 
 use sp_std::prelude::*;
@@ -28,7 +28,7 @@ use sp_version::RuntimeVersion;
 
 use frame_support::{
 	construct_runtime,
-	dispatch::DispatchClass,
+	dispatch::{DispatchClass, PostDispatchInfo},
 	parameter_types,
 	traits::{AsEnsureOriginWithArg, ConstU32, ConstU64, ConstU8, EitherOfDiverse, Everything},
 	weights::{ConstantMultiplier, Weight},
@@ -53,7 +53,10 @@ pub use sp_runtime::BuildStorage;
 // Polkadot imports
 use polkadot_runtime_common::{BlockHashCount, SlowAdjustingFeeUpdate};
 
-pub use runtime_common::{AccountId, Balance, BlockNumber, DealWithFees, Hash, Signature};
+pub use runtime_common::{
+	deposit, AccountId, Balance, BlockNumber, DealWithFees, Hash, Signature, EXISTENTIAL_DEPOSIT,
+	MICROPOPS, POPS,
+};
 
 use weights::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
 
@@ -61,6 +64,9 @@ use weights::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
 use runtime_common::Nonce;
 use xcm::latest::prelude::BodyId;
 use xcm_executor::XcmExecutor;
+
+// imports from pallets
+use pallet_sequencer_staking::WeightInfo;
 
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
@@ -106,11 +112,12 @@ pub type Executive = frame_executive::Executive<
 >;
 
 pub mod fee {
-	use super::{Balance, ExtrinsicBaseWeight, MILLIUNIT};
+	use super::{Balance, ExtrinsicBaseWeight};
 	use frame_support::weights::{
 		FeePolynomial, Weight, WeightToFeeCoefficient, WeightToFeeCoefficients,
 		WeightToFeePolynomial,
 	};
+	use runtime_common::MILLIPOPS;
 	use smallvec::smallvec;
 	use sp_runtime::Perbill;
 
@@ -148,9 +155,9 @@ pub mod fee {
 	impl WeightToFeePolynomial for RefTimeToFee {
 		type Balance = Balance;
 		fn polynomial() -> WeightToFeeCoefficients<Self::Balance> {
-			// in Rococo, extrinsic base weight (smallest non-zero weight) is mapped to 1 MILLIUNIT:
-			// in our template, we map to 1/10 of that, or 1/10 MILLIUNIT
-			let p = MILLIUNIT / 10;
+			// in Rococo, extrinsic base weight (smallest non-zero weight) is mapped to 1 MILLIPOPS:
+			// in here, we map to 1/10 of that, or 1/10 MILLIPOPS
+			let p = MILLIPOPS / 10;
 			let q = 100 * Balance::from(ExtrinsicBaseWeight::get().ref_time());
 			smallvec![WeightToFeeCoefficient {
 				degree: 1,
@@ -167,7 +174,7 @@ pub mod fee {
 		type Balance = Balance;
 		fn polynomial() -> WeightToFeeCoefficients<Self::Balance> {
 			// Map 10kb proof to 1 CENT.
-			let p = MILLIUNIT / 10;
+			let p = MILLIPOPS / 10;
 			let q = 10_000;
 
 			smallvec![WeightToFeeCoefficient {
@@ -218,16 +225,6 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 	transaction_version: 1,
 	state_version: 1,
 };
-
-pub const MICROUNIT: Balance = 1_000_000;
-pub const MILLIUNIT: Balance = 1_000 * MICROUNIT;
-pub const UNIT: Balance = 1_000 * MILLIUNIT;
-
-pub const EXISTENTIAL_DEPOSIT: Balance = MILLIUNIT;
-
-pub const fn deposit(items: u32, bytes: u32) -> Balance {
-	(items as Balance * 20 * UNIT + (bytes as Balance) * 100 * MICROUNIT) / 100
-}
 
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
@@ -361,7 +358,7 @@ impl pallet_balances::Config for Runtime {
 }
 
 parameter_types! {
-	pub const AssetDeposit: Balance = 10 * UNIT;
+	pub const AssetDeposit: Balance = 10 * POPS;
 	pub const AssetAccountDeposit: Balance = deposit(1, 16);
 	pub const ApprovalDeposit: Balance = EXISTENTIAL_DEPOSIT;
 	pub const StringLimit: u32 = 50;
@@ -394,7 +391,7 @@ impl pallet_assets::Config for Runtime {
 
 parameter_types! {
 	/// Relay Chain `TransactionByteFee` / 10
-	pub const TransactionByteFee: Balance = 10 * MICROUNIT;
+	pub const TransactionByteFee: Balance = 10 * MICROPOPS;
 }
 
 impl pallet_transaction_payment::Config for Runtime {
@@ -553,6 +550,82 @@ impl pallet_collator_selection::Config for Runtime {
 	type WeightInfo = ();
 }
 
+// Start of Popsicle pallets
+
+pub const MAX_SEQUENCERS: u32 = 1000;
+parameter_types! {
+	pub const PalletAccount: PalletId = PalletId(*b"seqcrstk");
+	pub const BTC: u32 = 0;
+	pub const MaxSequencerCandidates: u32 = MAX_SEQUENCERS;
+}
+
+pub struct OnInactiveSequencer;
+impl pallet_sequencer_staking::OnInactiveSequencer<Runtime> for OnInactiveSequencer {
+	fn on_inactive_sequencer(
+		collator_id: AccountId,
+		_round: pallet_sequencer_staking::RoundIndex,
+	) -> Result<Weight, DispatchErrorWithPostInfo<PostDispatchInfo>> {
+		SequencerStaking::go_offline_inner(collator_id)?;
+		let extra_weight =
+			<Runtime as pallet_sequencer_staking::Config>::WeightInfo::go_offline(MAX_SEQUENCERS);
+
+		Ok(<Runtime as frame_system::Config>::DbWeight::get()
+			.reads(1)
+			.saturating_add(extra_weight))
+	}
+}
+
+impl pallet_sequencer_staking::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	/// Interface to call Balances pallet
+	type Currency = Balances;
+	/// Interface to call the Assets pallet
+	type Assets = Assets;
+	/// Minimum round length is 1 day (60 * 60 * 24 / 6 second block times)
+	type MinBlocksPerRound = ConstU32<1440>;
+	/// If a sequencer doesn't get points on this number of rounds, it is notified as inactive
+	type MaxOfflineRounds = ConstU32<5>;
+	/// Rounds before the sequencer leaving the candidates request can be executed
+	type LeaveCandidatesDelay = ConstU32<3>;
+	/// Rounds before the candidate bond increase/decrease can be executed
+	type CandidateBondLessDelay = ConstU32<3>;
+	/// Rounds before the delegator exit can be executed
+	type LeaveDelegatorsDelay = ConstU32<3>;
+	/// Rounds before the delegator revocation can be executed
+	type RevokeDelegationDelay = ConstU32<3>;
+	/// Rounds before the delegator bond increase/decrease can be executed
+	type DelegationBondLessDelay = ConstU32<3>;
+	/// Rounds before the reward is paid,
+	type RewardPaymentDelay = ConstU32<2>;
+	/// Minimum sequencers selected per round, default at genesis and minimum forever after
+	type MinSelectedCandidates = ConstU32<9>;
+	/// Maximum top delegations per candidate
+	type MaxTopDelegationsPerCandidate = ConstU32<300>;
+	/// Maximum bottom delegations per candidate
+	type MaxBottomDelegationsPerCandidate = ConstU32<50>;
+	/// Maximum delegations per delegator
+	type MaxDelegationsPerDelegator = ConstU32<100>;
+	/// Minimum native token required to be locked to be a candidate
+	type MinCandidateStk = ConstU128<{ 20_000 * POPS }>;
+	/// Minimum stake required to be reserved to be a delegator
+	type MinDelegation = ConstU128<{ 10 * POPS }>;
+	type OnSequencerPayout = ();
+	type PayoutSequencerReward = ();
+	type OnInactiveSequencer = OnInactiveSequencer;
+	type OnNewRound = ();
+	/// Interface to call the SequencerGroup pallet
+	type SequencerGroup = ();
+	/// total rewardable native token per round
+	type RoundReward = ConstU128<{ 1 * POPS }>;
+	/// Account pallet id to manage rewarding native token and staked BTC
+	type PalletAccount = PalletAccount;
+	/// Maximum number of candidates
+	type MaxCandidates = MaxSequencerCandidates;
+	/// BTC asset id
+	type BTC = BTC;
+	type WeightInfo = ();
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub struct Runtime {
@@ -585,6 +658,9 @@ construct_runtime!(
 		PolkadotXcm: pallet_xcm = 31,
 		CumulusXcm: cumulus_pallet_xcm = 32,
 		DmpQueue: cumulus_pallet_dmp_queue = 33,
+
+		// Popsicle pallets.
+		SequencerStaking: pallet_sequencer_staking = 40,
 	}
 );
 

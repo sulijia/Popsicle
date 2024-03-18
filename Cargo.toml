@@ -32,7 +32,7 @@ smallvec = "1.11.0"
 # Local dependencies
 popsicle-runtime = { path = "runtime/popsicle" }
 runtime-common = { path = "runtime/common", default-features = false }
-pallet-parachain-template = { path = "pallets/template", default-features = false }
+pallet-sequencer-staking = { path = "pallets/sequencer-staking", default-features = false }
 
 # Substrate
 frame-benchmarking = { version = "25.0.0", default-features = false }

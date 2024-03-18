@@ -68,7 +68,7 @@ pub mod popsicle {
 	pub fn development_config() -> PopsicleChainSpec {
 		// Give your base currency a unit name and decimal places
 		let mut properties = sc_chain_spec::Properties::new();
-		properties.insert("tokenSymbol".into(), "UNIT".into());
+		properties.insert("tokenSymbol".into(), "POPS".into());
 		properties.insert("tokenDecimals".into(), 12.into());
 		properties.insert("ss58Format".into(), 42.into());
 
@@ -124,7 +124,7 @@ pub mod popsicle {
 	pub fn local_testnet_config() -> PopsicleChainSpec {
 		// Give your base currency a unit name and decimal places
 		let mut properties = sc_chain_spec::Properties::new();
-		properties.insert("tokenSymbol".into(), "UNIT".into());
+		properties.insert("tokenSymbol".into(), "POPS".into());
 		properties.insert("tokenDecimals".into(), 12.into());
 		properties.insert("ss58Format".into(), 42.into());
 
@@ -247,8 +247,8 @@ pub mod popsicle {
 					})
 					.collect(),
 			},
-			// no need to pass anything to aura, in fact it will panic if we do. Session will take care
-			// of this.
+			// no need to pass anything to aura, in fact it will panic if we do. Session will take
+			// care of this.
 			aura: Default::default(),
 			aura_ext: Default::default(),
 			sudo: popsicle_runtime::SudoConfig { key: Some(root_key) },
