@@ -229,11 +229,6 @@ pub mod pallet {
 		StorageValue<_, BoundedVec<AccountIdOf<T>, T::MaxCandidates>, ValueQuery>;
 
 	#[pallet::storage]
-	/// The sequencer candidates preselected for the next round
-	type PreSelectedCandidates<T: Config> =
-		StorageValue<_, BoundedVec<AccountIdOf<T>, T::MaxCandidates>, ValueQuery>;
-
-	#[pallet::storage]
 	/// Total capital locked by this staking pallet
 	pub(crate) type Total<T: Config> = StorageValue<_, AssetBalanceOf<T>, ValueQuery>;
 
@@ -485,8 +480,6 @@ pub mod pallet {
 				// pay all stakers for T::RewardPaymentDelay rounds ago
 				weight = weight.saturating_add(Self::prepare_staking_payouts(round));
 
-				// copy the preselected candidates to the selected candidates
-				<SelectedCandidates<T>>::put(<PreSelectedCandidates<T>>::get());
 				// get the total number of selected candidates
 				let sequencer_count = <SelectedCandidates<T>>::decode_len().unwrap_or(0) as u32;
 				// account for SelectedCandidates reads and writes
@@ -1114,10 +1107,6 @@ pub mod pallet {
 			<CandidateInfo<T>>::get(acc).is_some()
 		}
 
-		pub fn is_selected_candidate(acc: &AccountIdOf<T>) -> bool {
-			<SelectedCandidates<T>>::get().binary_search(acc).is_ok()
-		}
-
 		pub fn join_candidates_inner(
 			acc: AccountIdOf<T>,
 			candidate_count: u32,
@@ -1634,9 +1623,9 @@ pub mod pallet {
 					total_exposed_amount: state.total_counted,
 				});
 			}
-			// insert canonical sequencer set to the preselected candidates storage for the next
+			// insert canonical sequencer set to the selected candidates storage for the next
 			// round
-			<PreSelectedCandidates<T>>::put(
+			<SelectedCandidates<T>>::put(
 				BoundedVec::try_from(sequencers)
 					.expect("subset of sequencers is always less than or equal to max candidates"),
 			);
