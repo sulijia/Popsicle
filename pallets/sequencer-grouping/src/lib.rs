@@ -13,6 +13,8 @@ pub mod pallet {
 	use frame_system::pallet_prelude::*;
 	use sp_runtime::traits::Hash;
 
+	pub type RoundIndex = u32;
+
 	/// Pallet for sequencer grouping
 	#[pallet::pallet]
 	pub struct Pallet<T>(PhantomData<T>);
@@ -31,17 +33,17 @@ pub mod pallet {
 		type MaxGroupNumber: Get<u32>;
 	}
 
-	pub trait SequencerGroup<T: Config> {
-		fn trigger_group(candidates: Vec<T::AccountId>, starting_block: u64, round_index: u32) -> Result<(), DispatchError>;
-		fn account_in_group(account: T::AccountId) -> Result<u32, DispatchError>;
+	pub trait SequencerGroup<AccountId, BlockNumber> {
+		fn trigger_group(candidates: Vec<AccountId>, starting_block: BlockNumber, round_index: RoundIndex) -> DispatchResult;
+		fn account_in_group(account: AccountId) -> Result<u32, DispatchError>;
 		fn all_group_ids() -> Vec<u32>;
-		fn next_round() -> NextRound;
+		fn next_round() -> NextRound<BlockNumber>;
 	}
 
 	#[derive(Clone, Eq, PartialEq, RuntimeDebug, Encode, Decode, TypeInfo, MaxEncodedLen, Default)]
-	pub struct NextRound {
-		pub starting_block: u64,
-		pub round_index: u32,
+	pub struct NextRound<BlockNumber> {
+		pub starting_block: BlockNumber,
+		pub round_index: RoundIndex,
 	}
 
 	#[pallet::storage]
@@ -50,7 +52,7 @@ pub mod pallet {
 
 	#[pallet::storage]
 	#[pallet::getter(fn next_round)]
-	pub type NextRoundStorage<T: Config> = StorageValue<_, NextRound, ValueQuery>;
+	pub type NextRoundStorage<T: Config> = StorageValue<_, NextRound<BlockNumberFor<T>>, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn max_group_size)]
@@ -98,7 +100,7 @@ pub mod pallet {
 	pub enum Event<T: Config> {
 		/// Updated the sequencer group.
 		SequencerGroupUpdated {
-			starting_block: u64,
+			starting_block: BlockNumberFor<T>,
 			round_index: u32,
 		},
 	}
@@ -134,12 +136,6 @@ pub mod pallet {
 	}
 
 	impl<T: Config> Pallet<T> {
-		// fn get_and_increment_nonce() -> Vec<u8> {
-		// 	let random_seed = RandomSeed::<T>::get();
-		// 	RandomSeed::<T>::put(random_seed.wrapping_add(1));
-		// 	random_seed.encode()
-		// }
-
 		pub fn shuffle_accounts(mut accounts: Vec<T::AccountId>) -> Vec<T::AccountId> {
 			// let random_seed = Self::get_and_increment_nonce();
 			let random_seed = frame_system::Pallet::<T>::parent_hash().encode();
@@ -156,8 +152,8 @@ pub mod pallet {
 		}
     }
 
-	impl<T: Config> SequencerGroup<T> for Pallet<T> {
-		fn trigger_group(candidates: Vec<T::AccountId>, starting_block: u64, round_index: u32) -> DispatchResult {
+	impl<T: Config> SequencerGroup<T::AccountId, BlockNumberFor<T>> for Pallet<T> {
+		fn trigger_group(candidates: Vec<T::AccountId>, starting_block: BlockNumberFor<T>, round_index: RoundIndex) -> DispatchResult {
 			// check if the length of candidates is enough to form groups required
 			let group_size = GroupSize::<T>::get();
 			let group_number = GroupNumber::<T>::get();
@@ -203,7 +199,7 @@ pub mod pallet {
 			(0..group_count as u32).collect()
 		}
 
-		fn next_round() -> NextRound {
+		fn next_round() -> NextRound<BlockNumberFor<T>> {
 			NextRoundStorage::<T>::get()
 		}
 	}
