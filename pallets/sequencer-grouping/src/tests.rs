@@ -1,4 +1,4 @@
-use crate::{mock::*, Event, SequencerGroup, Error, GroupMembers};
+use crate::{mock::*, Event, SequencerGroup, Error, GroupMembers, NextRound};
 use frame_support::{assert_noop, assert_ok};
 use sp_runtime::testing::H256;
 use sp_runtime::traits::BadOrigin;
@@ -109,6 +109,20 @@ fn all_group_ids_works() {
 		println!("Group Members: {:?}", GroupMembers::<Test>::get());
 
 		assert_eq!(SequencerGrouping::all_group_ids(), vec![0, 1, 2]);
+	});
+}
+
+#[test]
+fn get_next_round_works() {
+	new_test_ext().execute_with(|| {
+		assert_ok!(SequencerGrouping::set_group_metric(RuntimeOrigin::root(), 2, 3));
+		assert_ok!(SequencerGrouping::trigger_group(vec![1, 2, 3, 4, 5, 6], 1, 1));
+		println!("Group Members: {:?}", GroupMembers::<Test>::get());
+
+		assert_eq!(SequencerGrouping::next_round(), NextRound {
+			starting_block: 1,
+			round_index: 1,
+		});
 	});
 }
 

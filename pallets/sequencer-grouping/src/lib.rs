@@ -35,13 +35,22 @@ pub mod pallet {
 		fn trigger_group(candidates: Vec<T::AccountId>, starting_block: u64, round_index: u32) -> Result<(), DispatchError>;
 		fn account_in_group(account: T::AccountId) -> Result<u32, DispatchError>;
 		fn all_group_ids() -> Vec<u32>;
+		fn next_round() -> NextRound;
 	}
 
-	// #[pallet::storage]
-	// pub type RandomSeed<T: Config> = StorageValue<_, u64, ValueQuery>;
+	#[derive(Clone, Eq, PartialEq, RuntimeDebug, Encode, Decode, TypeInfo, MaxEncodedLen, Default)]
+	pub struct NextRound {
+		pub starting_block: u64,
+		pub round_index: u32,
+	}
 
 	#[pallet::storage]
+	#[pallet::getter(fn group_members)]
 	pub type GroupMembers<T: Config> = StorageValue<_, BoundedVec<BoundedVec<T::AccountId, T::MaxGroupSize>, T::MaxGroupNumber>, ValueQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn next_round)]
+	pub type NextRoundStorage<T: Config> = StorageValue<_, NextRound, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn max_group_size)]
@@ -168,6 +177,10 @@ pub mod pallet {
 			}
 			GroupMembers::<T>::put(&groups);
 
+			NextRoundStorage::<T>::put(NextRound {
+				starting_block,
+				round_index,
+			});
 			Self::deposit_event(Event::SequencerGroupUpdated {
 				starting_block,
 				round_index,
@@ -188,6 +201,10 @@ pub mod pallet {
 		fn all_group_ids() -> Vec<u32> {
 			let group_count = GroupMembers::<T>::get().len();
 			(0..group_count as u32).collect()
+		}
+
+		fn next_round() -> NextRound {
+			NextRoundStorage::<T>::get()
 		}
 	}
 }
