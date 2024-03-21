@@ -26,7 +26,7 @@ scale-info = { workspace = true, default-features = false, features = [
 smallvec = { workspace = true }
 
 # Local
-pallet-parachain-template = { workspace = true, default-features = false }
+pallet-sequencer-grouping = { workspace = true, default-features = false }
 runtime-common = { workspace = true, default-features = false }
 
 # Substrate
@@ -111,7 +111,7 @@ std = [
   "pallet-balances/std",
   "pallet-collective/std",
   "pallet-collator-selection/std",
-  "pallet-parachain-template/std",
+  "pallet-sequencer-grouping/std",
   "pallet-session/std",
   "pallet-sudo/std",
   "pallet-timestamp/std",
@@ -150,7 +150,7 @@ runtime-benchmarks = [
   "pallet-balances/runtime-benchmarks",
   "pallet-collator-selection/runtime-benchmarks",
   "pallet-collective/runtime-benchmarks",
-  "pallet-parachain-template/runtime-benchmarks",
+  "pallet-sequencer-grouping/runtime-benchmarks",
   "pallet-timestamp/runtime-benchmarks",
   "pallet-utility/runtime-benchmarks",
   "pallet-xcm/runtime-benchmarks",
@@ -175,7 +175,7 @@ try-runtime = [
   "pallet-balances/try-runtime",
   "pallet-collator-selection/try-runtime",
   "pallet-collective/try-runtime",
-  "pallet-parachain-template/try-runtime",
+  "pallet-sequencer-grouping/try-runtime",
   "pallet-session/try-runtime",
   "pallet-sudo/try-runtime",
   "pallet-timestamp/try-runtime",

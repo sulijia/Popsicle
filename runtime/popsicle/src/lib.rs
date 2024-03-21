@@ -20,6 +20,7 @@ use sp_runtime::{
 	transaction_validity::{TransactionSource, TransactionValidity},
 	ApplyExtrinsicResult,
 };
+use pallet_sequencer_grouping::SimpleRandomness;
 
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -415,6 +416,13 @@ impl pallet_utility::Config for Runtime {
 	type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
 }
 
+impl pallet_sequencer_grouping::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type MaxGroupSize = ConstU32<100>;
+	type MaxGroupNumber = ConstU32<100>;
+	type Randomness = SimpleRandomness<Self>;
+}
+
 parameter_types! {
 	pub const ReservedXcmpWeight: Weight = MAXIMUM_BLOCK_WEIGHT.saturating_div(4);
 	pub const ReservedDmpWeight: Weight = MAXIMUM_BLOCK_WEIGHT.saturating_div(4);
@@ -585,6 +593,8 @@ construct_runtime!(
 		PolkadotXcm: pallet_xcm = 31,
 		CumulusXcm: cumulus_pallet_xcm = 32,
 		DmpQueue: cumulus_pallet_dmp_queue = 33,
+
+		SequencerGroupingPallet: pallet_sequencer_grouping = 41,
 	}
 );
 
@@ -598,7 +608,7 @@ mod benches {
 		[pallet_timestamp, Timestamp]
 		[pallet_collator_selection, CollatorSelection]
 		[cumulus_pallet_xcmp_queue, XcmpQueue]
-		[pallet_motion, Motion]
+		[pallet_sequencer_grouping, SequencerGroupingPallet]
 	);
 }
 

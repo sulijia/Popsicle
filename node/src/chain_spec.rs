@@ -200,6 +200,7 @@ pub mod popsicle {
 		}
 
 		popsicle_runtime::RuntimeGenesisConfig {
+			sequencer_grouping_pallet: Default::default(),
 			system: popsicle_runtime::SystemConfig {
 				code: popsicle_runtime::WASM_BINARY
 					.expect("WASM binary was not build, please build it!")
