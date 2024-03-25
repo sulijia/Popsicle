@@ -418,6 +418,7 @@ impl pallet_utility::Config for Runtime {
 
 impl pallet_sequencer_grouping::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
+	type WeightInfo = pallet_sequencer_grouping::weights::SubstrateWeight<Runtime>;
 	type MaxGroupSize = ConstU32<100>;
 	type MaxGroupNumber = ConstU32<100>;
 	type Randomness = SimpleRandomness<Self>;

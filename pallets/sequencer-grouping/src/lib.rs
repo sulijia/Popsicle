@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 pub use pallet::*;
 
 #[cfg(test)]
@@ -8,6 +10,8 @@ mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
+pub mod weights;
+pub use weights::*;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -15,6 +19,8 @@ pub mod pallet {
 	use frame_support::traits::{BuildGenesisConfig, Randomness};
 	use frame_system::pallet_prelude::*;
 	use sp_runtime::traits::Hash;
+	use sp_std::vec::Vec;
+	use super::*;
 
 	pub type RoundIndex = u32;
 
@@ -25,6 +31,8 @@ pub mod pallet {
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+		/// Type representing the weight of this pallet
+		type WeightInfo: WeightInfo;
 		type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
 
 		/// Maximum size of each sequencer group
@@ -111,7 +119,7 @@ pub mod pallet {
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		#[pallet::call_index(0)]
-		#[pallet::weight(Weight::default())]
+		#[pallet::weight(T::WeightInfo::set_group_metric())]
 		pub fn set_group_metric(origin: OriginFor<T>, group_size: u32, group_number: u32) -> DispatchResult {
 			ensure_root(origin)?;
 			// check if group_size is no more than MaxGroupSize
@@ -120,6 +128,15 @@ pub mod pallet {
 			ensure!(group_number <= T::MaxGroupNumber::get(), Error::<T>::GroupNumberTooLarge);
 			GroupSize::<T>::put(group_size);
 			GroupNumber::<T>::put(group_number);
+			Ok(())
+		}
+
+		#[cfg(feature = "runtime-benchmarks")]
+		#[pallet::call_index(1)]
+		#[pallet::weight(T::WeightInfo::benchmark_trigger_group(T::MaxGroupSize::get(), T::MaxGroupNumber::get()))]
+		pub fn benchmark_trigger_group(origin: OriginFor<T>, candidates: Vec<T::AccountId>, starting_block: BlockNumberFor<T>, round_index: RoundIndex) -> DispatchResult {
+			ensure_root(origin)?;
+			let _ = <Self as SequencerGroup<T::AccountId, BlockNumberFor<T>>>::trigger_group(candidates, starting_block, round_index);
 			Ok(())
 		}
 	}
@@ -142,7 +159,6 @@ pub mod pallet {
 		pub fn shuffle_accounts(mut accounts: Vec<T::AccountId>) -> Vec<T::AccountId> {
 			// let random_seed = Self::get_and_increment_nonce();
 			let random_seed = frame_system::Pallet::<T>::parent_hash().encode();
-			println!("parent hash: {:?}", frame_system::Pallet::<T>::parent_hash());
 			let random_value = T::Randomness::random(&random_seed);
 			let random_value = <u64>::decode(&mut random_value.0.as_ref()).unwrap_or(0);
 
@@ -207,3 +223,4 @@ pub mod pallet {
 		}
 	}
 }
+
