@@ -5,6 +5,7 @@ use frame_support::{
 	traits::Get,
 };
 use sp_runtime::{DispatchErrorWithPostInfo, DispatchResult};
+use sp_std::vec::Vec;
 
 // TODO: SequencerGroup trait for temp, delete later
 pub trait SequencerGroup<AccountId, BlockNumber> {

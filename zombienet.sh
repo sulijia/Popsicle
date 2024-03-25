@@ -57,7 +57,7 @@ print_help() {
   echo "This is a shell script to automate the execution of zombienet."
   echo ""
   echo "$ ./zombienet.sh init         # fetches zombienet and polkadot executables"
-  echo "$ ./zombienet.sh spawn        # spawns a rococo-local relay chain plus parachain-template-node"
+  echo "$ ./zombienet.sh spawn        # spawns a rococo-local relay chain plus popsicle-node"
 }
 
 SUBCOMMAND=$1

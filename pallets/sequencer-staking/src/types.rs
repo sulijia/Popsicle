@@ -14,7 +14,7 @@ use sp_runtime::{
 	traits::{Saturating, Zero},
 	Perbill, RuntimeDebug,
 };
-use sp_std::{cmp::Ordering, prelude::*};
+use sp_std::{cmp, cmp::Ordering, prelude::*};
 
 pub struct AddGet<T, R> {
 	_phantom: PhantomData<(T, R)>,
@@ -334,7 +334,7 @@ impl<
 			T::Assets::reducible_balance(
 				T::BTC::get(),
 				&who,
-				Preservation::Preserve,
+				Preservation::Expendable,
 				Fortitude::Polite
 			) >= more.into(),
 			Error::<T>::InsufficientBalance
@@ -351,7 +351,7 @@ impl<
 			&who,
 			&<Pallet<T>>::account_id(),
 			more.into(),
-			Preservation::Preserve,
+			Preservation::Expendable,
 		)
 		.map_err(|_| Error::<T>::TransferFailed)?;
 
@@ -383,7 +383,7 @@ impl<
 			&Pallet::<T>::account_id(),
 			&who,
 			amount.into(),
-			Preservation::Preserve,
+			Preservation::Expendable,
 		)
 		.map_err(|_| Error::<T>::TransferFailed)?;
 
@@ -1053,9 +1053,9 @@ pub enum DelegatorStatus {
 	Leaving(RoundIndex),
 }
 
-#[derive(Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Clone, Encode, Decode, RuntimeDebug, TypeInfo, MaxEncodedLen, PartialEq)]
 /// Delegator state
-pub struct Delegator<AccountId, Balance> {
+pub struct Delegator<AccountId: cmp::Ord, Balance> {
 	/// Delegator account
 	pub id: AccountId,
 	/// All current delegations
@@ -1122,7 +1122,7 @@ impl<
 			&Pallet::<T>::account_id(),
 			&AccountIdOf::<T>::from(self.id.clone()),
 			amount.into(),
-			Preservation::Preserve,
+			Preservation::Expendable,
 		)
 		.map_err(|_| Error::<T>::TransferFailed)?;
 
@@ -1143,7 +1143,7 @@ impl<
 			&AccountIdOf::<T>::from(self.id.clone()),
 			&<Pallet<T>>::account_id(),
 			amount.into(),
-			Preservation::Preserve,
+			Preservation::Expendable,
 		)
 		.map_err(|_| Error::<T>::TransferFailed)?;
 
@@ -1164,7 +1164,7 @@ impl<
 			&Pallet::<T>::account_id(),
 			&AccountIdOf::<T>::from(self.id.clone()),
 			amount.into(),
-			Preservation::Preserve,
+			Preservation::Expendable,
 		)
 		.map_err(|_| Error::<T>::TransferFailed)?;
 
@@ -1242,7 +1242,7 @@ impl<
 					&AccountIdOf::<T>::from(self.id.clone()),
 					&<Pallet<T>>::account_id(),
 					amount.into(),
-					Preservation::Preserve,
+					Preservation::Expendable,
 				)
 				.map_err(|_| Error::<T>::TransferFailed)?;
 

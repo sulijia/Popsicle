@@ -2,11 +2,11 @@
 
 pub use pallet::*;
 
-// #[cfg(test)]
-// mod mock;
+#[cfg(test)]
+mod mock;
 
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 
 mod delegation_requests;
 pub mod set;
@@ -37,7 +37,7 @@ pub mod pallet {
 			fungibles,
 			fungibles::{Inspect, Mutate},
 			tokens::{Fortitude, Preservation, WithdrawReasons},
-			Currency, ExistenceRequirement, Get, Imbalance, LockIdentifier, LockableCurrency,
+			Currency, ExistenceRequirement, Get, LockIdentifier, LockableCurrency,
 			ReservableCurrency,
 		},
 		PalletId,
@@ -67,7 +67,7 @@ pub mod pallet {
 		<<T as Config>::Assets as Inspect<<T as frame_system::Config>::AccountId>>::AssetId;
 
 	/// Sequencer lock identifier
-	pub const COLLATOR_LOCK_ID: LockIdentifier = *b"sequencr";
+	pub const SEQUENCER_LOCK_ID: LockIdentifier = *b"sequencr";
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
@@ -160,7 +160,7 @@ pub mod pallet {
 
 	#[pallet::storage]
 	/// Commission percent taken off of rewards for all sequencers
-	type SequencerCommission<T: Config> = StorageValue<_, Perbill, ValueQuery>;
+	pub(crate) type SequencerCommission<T: Config> = StorageValue<_, Perbill, ValueQuery>;
 
 	#[pallet::storage]
 	/// The total candidates selected every round
@@ -225,7 +225,7 @@ pub mod pallet {
 
 	#[pallet::storage]
 	/// The sequencer candidates selected for the current round
-	type SelectedCandidates<T: Config> =
+	pub(crate) type SelectedCandidates<T: Config> =
 		StorageValue<_, BoundedVec<AccountIdOf<T>, T::MaxCandidates>, ValueQuery>;
 
 	#[pallet::storage]
@@ -276,6 +276,135 @@ pub mod pallet {
 	#[pallet::storage]
 	/// Killswitch to enable/disable marking offline feature.
 	pub type EnableMarkingOffline<T: Config> = StorageValue<_, bool, ValueQuery>;
+
+	#[pallet::genesis_config]
+	pub struct GenesisConfig<T: Config> {
+		/// Initialize balance and register all as sequencers: `(sequencer AccountId, balance
+		/// Amount)`
+		pub candidates: Vec<AccountIdOf<T>>,
+		/// Initialize balance and make delegations:
+		/// `(delegator AccountId, sequencer AccountId, delegation Amount)`
+		pub delegations: Vec<(AccountIdOf<T>, AccountIdOf<T>, AssetBalanceOf<T>)>,
+		/// Default fixed percent a sequencer takes off the top of due rewards
+		pub sequencer_commission: Perbill,
+		/// Default number of blocks in a round
+		pub blocks_per_round: u32,
+		/// Number of selected candidates every round. Cannot be lower than MinSelectedCandidates
+		pub num_selected_candidates: u32,
+	}
+
+	impl<T: Config> Default for GenesisConfig<T> {
+		fn default() -> Self {
+			Self {
+				candidates: vec![],
+				delegations: vec![],
+				sequencer_commission: Default::default(),
+				blocks_per_round: 1u32,
+				num_selected_candidates: T::MinSelectedCandidates::get(),
+			}
+		}
+	}
+
+	#[pallet::genesis_build]
+	impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
+		fn build(&self) {
+			assert!(self.blocks_per_round > 0, "Blocks per round must be > 0");
+
+			let mut candidate_count = 0u32;
+			// Initialize the candidates
+			for candidate in &self.candidates {
+				let lock_amount = T::MinCandidateStk::get();
+				assert!(
+					T::Currency::free_balance(&candidate) >= lock_amount,
+					"Account does not have enough balance to be locked as a candidate."
+				);
+
+				if let Err(error) = <Pallet<T>>::join_candidates(
+					T::RuntimeOrigin::from(Some(candidate.clone()).into()),
+					candidate_count,
+				) {
+					log::warn!("Join candidates failed in genesis with error {:?}", error);
+				} else {
+					candidate_count = candidate_count.saturating_add(1u32);
+				}
+			}
+
+			let mut col_delegator_count: BTreeMap<T::AccountId, u32> = BTreeMap::new();
+			let mut del_delegation_count: BTreeMap<T::AccountId, u32> = BTreeMap::new();
+
+			// Initialize the delegations
+			for &(ref delegator, ref target, balance) in &self.delegations {
+				let delegator_balance = T::Assets::reducible_balance(
+					T::BTC::get(),
+					&delegator,
+					Preservation::Expendable,
+					Fortitude::Polite,
+				);
+
+				assert!(
+					delegator_balance >= balance,
+					"Account does not have enough balance to place delegation."
+				);
+				let cd_count =
+					if let Some(x) = col_delegator_count.get(target) { *x } else { 0u32 };
+				let dd_count =
+					if let Some(x) = del_delegation_count.get(delegator) { *x } else { 0u32 };
+
+				if let Err(error) = <Pallet<T>>::delegate(
+					T::RuntimeOrigin::from(Some(delegator.clone()).into()),
+					target.clone(),
+					balance,
+					cd_count,
+					dd_count,
+				) {
+					log::warn!("Delegate failed in genesis with error {:?}", error);
+				} else {
+					if let Some(x) = col_delegator_count.get_mut(target) {
+						*x = x.saturating_add(1u32);
+					} else {
+						col_delegator_count.insert(target.clone(), 1u32);
+					};
+					if let Some(x) = del_delegation_count.get_mut(delegator) {
+						*x = x.saturating_add(1u32);
+					} else {
+						del_delegation_count.insert(delegator.clone(), 1u32);
+					};
+				}
+			}
+
+			// Set sequencer commission to default config
+			<SequencerCommission<T>>::put(self.sequencer_commission);
+
+			// Set total selected candidates to value from config
+			assert!(
+				self.num_selected_candidates >= T::MinSelectedCandidates::get(),
+				"{:?}",
+				Error::<T>::CannotSetBelowMin
+			);
+			assert!(
+				self.num_selected_candidates <= T::MaxCandidates::get(),
+				"{:?}",
+				Error::<T>::CannotSetAboveMaxCandidates
+			);
+
+			<TotalSelected<T>>::put(self.num_selected_candidates);
+
+			// Choose top TotalSelected sequencer candidates
+			let (_, v_count, _, _total_staked) = <Pallet<T>>::select_top_candidates(1u32);
+
+			// Start Round 1 at Block 0, with snapshot at 3/4 of the round
+			let snapshot_time_point = self.blocks_per_round * 3 / 4;
+			let round: RoundInfo<BlockNumberFor<T>> =
+				RoundInfo::new(1u32, Zero::zero(), self.blocks_per_round, snapshot_time_point);
+			<Round<T>>::put(round);
+
+			<Pallet<T>>::deposit_event(Event::NewRound {
+				starting_block: Zero::zero(),
+				round: 1u32,
+				selected_sequencers_number: v_count,
+			});
+		}
+	}
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -405,7 +534,7 @@ pub mod pallet {
 			total_candidate_staked: AssetBalanceOf<T>,
 		},
 		/// Paid the account (delegator or sequencer) the balance as liquid rewards.
-		Rewarded { account: AccountIdOf<T>, rewards: AssetBalanceOf<T> },
+		Rewarded { account: AccountIdOf<T>, rewards: BalanceOf<T> },
 		/// Set total selected candidates to this value.
 		TotalSelectedSet { old: u32, new: u32 },
 		/// Set sequencer commission to this value.
@@ -1013,12 +1142,18 @@ pub mod pallet {
 			candidate_delegation_count_hint: u32,
 			delegation_count_hint: u32,
 		) -> DispatchResultWithPostInfo {
+			// ensure that the candidate is active
+			ensure!(
+				<CandidateInfo<T>>::get(&candidate).map_or(false, |c| c.is_active()),
+				Error::<T>::CandidateDNE
+			);
+
 			// check that caller can transfer the amount before any changes to storage
 			ensure!(
 				T::Assets::reducible_balance(
 					T::BTC::get(),
 					&delegator,
-					Preservation::Preserve,
+					Preservation::Expendable,
 					Fortitude::Polite
 				) >= amount,
 				Error::<T>::InsufficientBalance
@@ -1063,7 +1198,7 @@ pub mod pallet {
 				&delegator,
 				&Self::account_id(),
 				amount,
-				Preservation::Preserve,
+				Preservation::Expendable,
 			)
 			.map_err(|_| Error::<T>::TransferFailed)?;
 
@@ -1129,7 +1264,7 @@ pub mod pallet {
 				T::Currency::free_balance(&acc) >= lock_amount,
 				Error::<T>::InsufficientBalance,
 			);
-			T::Currency::set_lock(COLLATOR_LOCK_ID, &acc, lock_amount, WithdrawReasons::all());
+			T::Currency::set_lock(SEQUENCER_LOCK_ID, &acc, lock_amount, WithdrawReasons::all());
 
 			let candidate = CandidateMetadata::new(Zero::zero());
 			<CandidateInfo<T>>::insert(&acc, candidate);
@@ -1298,7 +1433,7 @@ pub mod pallet {
 			total_backing = total_backing.saturating_add(bottom_delegations.total);
 
 			// return join deposit to sequencer
-			T::Currency::remove_lock(COLLATOR_LOCK_ID, &candidate);
+			T::Currency::remove_lock(SEQUENCER_LOCK_ID, &candidate);
 
 			<CandidateInfo<T>>::remove(&candidate);
 			<DelegationScheduledRequests<T>>::remove(&candidate);
@@ -1570,7 +1705,7 @@ pub mod pallet {
 			// choose the top TotalSelected qualified candidates, ordered by stake
 			let sequencers = Self::compute_top_candidates();
 			if sequencers.is_empty() {
-				// SELECTION FAILED TO SELECT >=1 COLLATOR => select sequencers from previous round
+				// SELECTION FAILED TO SELECT >=1 SEQUENCER => select sequencers from previous round
 				let current_round = next.saturating_sub(1u32);
 				let mut total_per_candidate: BTreeMap<AccountIdOf<T>, AssetBalanceOf<T>> =
 					BTreeMap::new();
@@ -1711,16 +1846,15 @@ pub mod pallet {
 		pub fn payout_reward(amt: BalanceOf<T>, delegator: AccountIdOf<T>) {
 			let reward_account = Self::account_id();
 
-			if let Ok(amount_transferred) = T::Currency::transfer(
+			if T::Currency::transfer(
 				&reward_account,
 				&delegator,
 				amt,
 				ExistenceRequirement::AllowDeath,
-			) {
-				Self::deposit_event(Event::Rewarded {
-					account: delegator.clone(),
-					rewards: amount_transferred.peek(),
-				});
+			)
+			.is_ok()
+			{
+				Self::deposit_event(Event::Rewarded { account: delegator.clone(), rewards: amt });
 			};
 		}
 	}

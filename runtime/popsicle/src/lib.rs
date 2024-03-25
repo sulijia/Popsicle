@@ -598,7 +598,7 @@ impl pallet_sequencer_staking::Config for Runtime {
 	/// Rounds before the reward is paid,
 	type RewardPaymentDelay = ConstU32<2>;
 	/// Minimum sequencers selected per round, default at genesis and minimum forever after
-	type MinSelectedCandidates = ConstU32<9>;
+	type MinSelectedCandidates = ConstU32<2>;
 	/// Maximum top delegations per candidate
 	type MaxTopDelegationsPerCandidate = ConstU32<300>;
 	/// Maximum bottom delegations per candidate
@@ -674,7 +674,6 @@ mod benches {
 		[pallet_timestamp, Timestamp]
 		[pallet_collator_selection, CollatorSelection]
 		[cumulus_pallet_xcmp_queue, XcmpQueue]
-		[pallet_motion, Motion]
 	);
 }
 
