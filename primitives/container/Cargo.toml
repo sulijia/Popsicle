@@ -1,0 +1,25 @@
+[package]
+name = "primitives-container"
+authors.workspace = true
+edition.workspace = true
+license = "Unlicense"
+version = "0.0.1"
+
+[dependencies]
+parity-scale-codec = { workspace = true }
+scale-info = { workspace = true }
+sp-api = { workspace = true }
+sp-core = { workspace = true }
+sp-runtime ={ workspace = true }
+sp-std ={ workspace = true }
+
+[features]
+default = [ "std" ]
+std = [
+	"parity-scale-codec/std",
+	"sp-core/std",
+	"sp-runtime/std",
+	"sp-api/std",
+	"scale-info/std",
+	"sp-std/std",
+]

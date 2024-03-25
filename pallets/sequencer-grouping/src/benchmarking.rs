@@ -24,15 +24,15 @@ benchmarks! {
 		let s in 1 .. T::MaxGroupSize::get() as u32;
 		let n in 1 .. T::MaxGroupNumber::get() as u32;
 
-        let mut candidates: Vec<T::AccountId> = Vec::new();
-        for i in 0..(s * n) {
-            let candidate: T::AccountId = account("candidate", i, 0);
-            candidates.push(candidate);
-        }
-        let starting_block = frame_system::Pallet::<T>::block_number();
-        let round_index = 1u32;
+		let mut candidates: Vec<T::AccountId> = Vec::new();
+		for i in 0..(s * n) {
+			let candidate: T::AccountId = account("candidate", i, 0);
+			candidates.push(candidate);
+		}
+		let starting_block = frame_system::Pallet::<T>::block_number();
+		let round_index = 1u32;
 
-    }: _(RawOrigin::Root, candidates, starting_block, round_index)
+	}: _(RawOrigin::Root, candidates, starting_block, round_index)
 }
 
 impl_benchmark_test_suite!(SequencerGrouping, crate::mock::new_test_ext(), crate::mock::Test,);

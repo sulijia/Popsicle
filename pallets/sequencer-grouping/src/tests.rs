@@ -1,16 +1,20 @@
-use crate::{mock::*, Event, SequencerGroup, Error, GroupMembers, NextRound};
-use frame_support::{assert_noop, assert_ok};
+use crate::pallet::{GroupNumber, GroupSize};
+use crate::{mock::*, Error, Event, GroupMembers, NextRound, SequencerGroup};
 use frame_support::pallet_prelude::Get;
+use frame_support::{assert_noop, assert_ok};
 use sp_runtime::testing::H256;
 use sp_runtime::traits::BadOrigin;
-use crate::pallet::{GroupNumber, GroupSize};
 
 #[test]
 fn it_works_for_set_group_metric() {
 	new_test_ext().execute_with(|| {
 		let group_size = 3;
 		let group_number = 5;
-		assert_ok!(SequencerGrouping::set_group_metric(RuntimeOrigin::root(), group_size, group_number));
+		assert_ok!(SequencerGrouping::set_group_metric(
+			RuntimeOrigin::root(),
+			group_size,
+			group_number
+		));
 		assert_eq!(GroupSize::<Test>::get(), 3);
 		assert_eq!(GroupNumber::<Test>::get(), 5);
 	});
@@ -23,7 +27,11 @@ fn non_root_set_group_metric_fails() {
 		let group_number = 5;
 		let non_root = 0;
 		assert_noop!(
-			SequencerGrouping::set_group_metric(RuntimeOrigin::signed(non_root), group_size, group_number),
+			SequencerGrouping::set_group_metric(
+				RuntimeOrigin::signed(non_root),
+				group_size,
+				group_number
+			),
 			BadOrigin
 		);
 	});
@@ -35,7 +43,11 @@ fn set_group_metric_fails_group_size_too_large() {
 		let group_size: u32 = <Test as crate::Config>::MaxGroupSize::get();
 		let group_number: u32 = <Test as crate::Config>::MaxGroupNumber::get();
 		assert_noop!(
-			SequencerGrouping::set_group_metric(RuntimeOrigin::root(), group_size + 1, group_number + 1),
+			SequencerGrouping::set_group_metric(
+				RuntimeOrigin::root(),
+				group_size + 1,
+				group_number + 1
+			),
 			Error::<Test>::GroupSizeTooLarge
 		);
 	});
@@ -138,10 +150,9 @@ fn get_next_round_works() {
 		assert_ok!(SequencerGrouping::trigger_group(vec![1, 2, 3, 4, 5, 6], 16, 3));
 		println!("Group Members: {:?}", GroupMembers::<Test>::get());
 
-		assert_eq!(SequencerGrouping::next_round(), NextRound {
-			starting_block: 16,
-			round_index: 3,
-		});
+		assert_eq!(
+			SequencerGrouping::next_round(),
+			NextRound { starting_block: 16, round_index: 3 }
+		);
 	});
 }
-

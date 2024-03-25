@@ -15,12 +15,12 @@ pub use weights::*;
 
 #[frame_support::pallet]
 pub mod pallet {
+	use super::*;
 	use frame_support::pallet_prelude::*;
 	use frame_support::traits::{BuildGenesisConfig, Randomness};
 	use frame_system::pallet_prelude::*;
 	use sp_runtime::traits::Hash;
 	use sp_std::vec::Vec;
-	use super::*;
 
 	pub type RoundIndex = u32;
 
@@ -45,13 +45,19 @@ pub mod pallet {
 	}
 
 	pub trait SequencerGroup<AccountId, BlockNumber> {
-		fn trigger_group(candidates: Vec<AccountId>, starting_block: BlockNumber, round_index: RoundIndex) -> DispatchResult;
+		fn trigger_group(
+			candidates: Vec<AccountId>,
+			starting_block: BlockNumber,
+			round_index: RoundIndex,
+		) -> DispatchResult;
 		fn account_in_group(account: AccountId) -> Result<u32, DispatchError>;
 		fn all_group_ids() -> Vec<u32>;
 		fn next_round() -> NextRound<BlockNumber>;
 	}
 
-	#[derive(Clone, Eq, PartialEq, RuntimeDebug, Encode, Decode, TypeInfo, MaxEncodedLen, Default)]
+	#[derive(
+		Clone, Eq, PartialEq, RuntimeDebug, Encode, Decode, TypeInfo, MaxEncodedLen, Default,
+	)]
 	pub struct NextRound<BlockNumber> {
 		pub starting_block: BlockNumber,
 		pub round_index: RoundIndex,
@@ -59,11 +65,16 @@ pub mod pallet {
 
 	#[pallet::storage]
 	#[pallet::getter(fn group_members)]
-	pub type GroupMembers<T: Config> = StorageValue<_, BoundedVec<BoundedVec<T::AccountId, T::MaxGroupSize>, T::MaxGroupNumber>, ValueQuery>;
+	pub type GroupMembers<T: Config> = StorageValue<
+		_,
+		BoundedVec<BoundedVec<T::AccountId, T::MaxGroupSize>, T::MaxGroupNumber>,
+		ValueQuery,
+	>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn next_round)]
-	pub type NextRoundStorage<T: Config> = StorageValue<_, NextRound<BlockNumberFor<T>>, ValueQuery>;
+	pub type NextRoundStorage<T: Config> =
+		StorageValue<_, NextRound<BlockNumberFor<T>>, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn max_group_size)]
@@ -82,11 +93,7 @@ pub mod pallet {
 
 	impl<T: Config> Default for GenesisConfig<T> {
 		fn default() -> Self {
-			Self {
-				group_size: 2u32,
-				group_number: 3u32,
-				_marker: Default::default(),
-			}
+			Self { group_size: 2u32, group_number: 3u32, _marker: Default::default() }
 		}
 	}
 
@@ -110,17 +117,18 @@ pub mod pallet {
 	#[pallet::generate_deposit(pub(crate) fn deposit_event)]
 	pub enum Event<T: Config> {
 		/// Updated the sequencer group.
-		SequencerGroupUpdated {
-			starting_block: BlockNumberFor<T>,
-			round_index: u32,
-		},
+		SequencerGroupUpdated { starting_block: BlockNumberFor<T>, round_index: u32 },
 	}
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		#[pallet::call_index(0)]
 		#[pallet::weight(T::WeightInfo::set_group_metric())]
-		pub fn set_group_metric(origin: OriginFor<T>, group_size: u32, group_number: u32) -> DispatchResult {
+		pub fn set_group_metric(
+			origin: OriginFor<T>,
+			group_size: u32,
+			group_number: u32,
+		) -> DispatchResult {
 			ensure_root(origin)?;
 			// check if group_size is no more than MaxGroupSize
 			ensure!(group_size <= T::MaxGroupSize::get(), Error::<T>::GroupSizeTooLarge);
@@ -131,12 +139,24 @@ pub mod pallet {
 			Ok(())
 		}
 
-		#[cfg(feature = "runtime-benchmarks")]
+		//#[cfg(feature = "runtime-benchmarks")]
 		#[pallet::call_index(1)]
-		#[pallet::weight(T::WeightInfo::benchmark_trigger_group(T::MaxGroupSize::get(), T::MaxGroupNumber::get()))]
-		pub fn benchmark_trigger_group(origin: OriginFor<T>, candidates: Vec<T::AccountId>, starting_block: BlockNumberFor<T>, round_index: RoundIndex) -> DispatchResult {
+		#[pallet::weight(T::WeightInfo::benchmark_trigger_group(
+			T::MaxGroupSize::get(),
+			T::MaxGroupNumber::get()
+		))]
+		pub fn benchmark_trigger_group(
+			origin: OriginFor<T>,
+			candidates: Vec<T::AccountId>,
+			starting_block: BlockNumberFor<T>,
+			round_index: RoundIndex,
+		) -> DispatchResult {
 			ensure_root(origin)?;
-			let _ = <Self as SequencerGroup<T::AccountId, BlockNumberFor<T>>>::trigger_group(candidates, starting_block, round_index);
+			let _ = <Self as SequencerGroup<T::AccountId, BlockNumberFor<T>>>::trigger_group(
+				candidates,
+				starting_block,
+				round_index,
+			);
 			Ok(())
 		}
 	}
@@ -169,19 +189,29 @@ pub mod pallet {
 
 			accounts
 		}
-    }
+	}
 
 	impl<T: Config> SequencerGroup<T::AccountId, BlockNumberFor<T>> for Pallet<T> {
-		fn trigger_group(candidates: Vec<T::AccountId>, starting_block: BlockNumberFor<T>, round_index: RoundIndex) -> DispatchResult {
+		fn trigger_group(
+			candidates: Vec<T::AccountId>,
+			starting_block: BlockNumberFor<T>,
+			round_index: RoundIndex,
+		) -> DispatchResult {
 			// check if the length of candidates is enough to form groups required
 			let group_size = GroupSize::<T>::get();
 			let group_number = GroupNumber::<T>::get();
-			ensure!(candidates.len() >= (group_size * group_number) as usize, Error::<T>::CandidatesNotEnough);
+			ensure!(
+				candidates.len() >= (group_size * group_number) as usize,
+				Error::<T>::CandidatesNotEnough
+			);
 
 			// shuffle the candidate list and split the candidates into groups
 			// and store the groups into storage
 			// and emit the event
-			let mut groups: BoundedVec<BoundedVec<T::AccountId, T::MaxGroupSize>, T::MaxGroupNumber> = BoundedVec::new();
+			let mut groups: BoundedVec<
+				BoundedVec<T::AccountId, T::MaxGroupSize>,
+				T::MaxGroupNumber,
+			> = BoundedVec::new();
 			let mut candidates = Pallet::<T>::shuffle_accounts(candidates);
 			for _ in 0..group_number {
 				let mut group: BoundedVec<T::AccountId, T::MaxGroupSize> = BoundedVec::new();
@@ -192,14 +222,8 @@ pub mod pallet {
 			}
 			GroupMembers::<T>::put(&groups);
 
-			NextRoundStorage::<T>::put(NextRound {
-				starting_block,
-				round_index,
-			});
-			Self::deposit_event(Event::SequencerGroupUpdated {
-				starting_block,
-				round_index,
-			});
+			NextRoundStorage::<T>::put(NextRound { starting_block, round_index });
+			Self::deposit_event(Event::SequencerGroupUpdated { starting_block, round_index });
 			Ok(())
 		}
 
@@ -223,4 +247,3 @@ pub mod pallet {
 		}
 	}
 }
-

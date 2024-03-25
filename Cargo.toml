@@ -2,7 +2,7 @@
 panic = "unwind"
 
 [workspace]
-members = ["node", "pallets/*", "runtime/popsicle"]
+members = ["node", "pallets/*", "primitives/*", "runtime/popsicle"]
 resolver = "2"
 
 [workspace.package]
@@ -33,6 +33,8 @@ smallvec = "1.11.0"
 popsicle-runtime = { path = "runtime/popsicle" }
 runtime-common = { path = "runtime/common", default-features = false }
 pallet-parachain-template = { path = "pallets/template", default-features = false }
+pallet-container = { path = "pallets/container", default-features = false }
+primitives-container = {  path="./primitives/container", default-features = false }
 
 # Substrate
 frame-benchmarking = { version = "25.0.0", default-features = false }
@@ -93,6 +95,7 @@ substrate-frame-rpc-system = { version = "25.0.0" }
 substrate-prometheus-endpoint = { version = "0.16.0" }
 substrate-wasm-builder = { version = "14.0.0" }
 try-runtime-cli = { version = "0.35.0" }
+sp-application-crypto= { version = "27.0.0"}
 
 # Cumulus
 assets-common = { version = "0.4.0", default-features = false }

@@ -26,8 +26,10 @@ scale-info = { workspace = true, default-features = false, features = [
 smallvec = { workspace = true }
 
 # Local
-pallet-sequencer-grouping = { workspace = true, default-features = false }
 runtime-common = { workspace = true, default-features = false }
+pallet-container = { workspace = true , default-features = false }
+pallet-sequencer-grouping = { workspace = true, default-features = false }
+primitives-container = { workspace = true , default-features = false }
 
 # Substrate
 frame-benchmarking = { workspace = true, default-features = false, optional = true }
@@ -137,6 +139,8 @@ std = [
   "xcm-executor/std",
   "xcm/std",
   "substrate-wasm-builder",
+  "primitives-container/std",
+  "pallet-container/std",
 ]
 
 runtime-benchmarks = [
@@ -158,6 +162,7 @@ runtime-benchmarks = [
   "xcm-builder/runtime-benchmarks",
   "cumulus-pallet-session-benchmarking/runtime-benchmarks",
   "cumulus-pallet-xcmp-queue/runtime-benchmarks",
+  "pallet-container/runtime-benchmarks",
 ]
 
 try-runtime = [
