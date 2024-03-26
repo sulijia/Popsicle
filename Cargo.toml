@@ -25,14 +25,15 @@ parity-scale-codec = { version = "3.2.2", default-features = false, features = [
   "derive",
 ] }
 scale-info = { version = "2.9.0", default-features = false }
-serde = { version = "1.0.183", default-features = false, features = ["derive"] }
+serde = { version = "1.0.183", features = ["derive"], default-features = false }
 serde_json = "1.0.85"
 smallvec = "1.11.0"
+similar-asserts = "1.1.0"
 
 # Local dependencies
 popsicle-runtime = { path = "runtime/popsicle" }
 runtime-common = { path = "runtime/common", default-features = false }
-pallet-parachain-template = { path = "pallets/template", default-features = false }
+pallet-sequencer-staking = { path = "pallets/sequencer-staking", default-features = false }
 pallet-container = { path = "pallets/container", default-features = false }
 primitives-container = {  path="./primitives/container", default-features = false }
 

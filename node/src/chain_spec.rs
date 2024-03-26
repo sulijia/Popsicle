@@ -4,7 +4,10 @@ use sc_chain_spec::{ChainSpecExtension, ChainSpecGroup};
 use sc_service::ChainType;
 use serde::{Deserialize, Serialize};
 use sp_core::{sr25519, Pair, Public};
-use sp_runtime::traits::{IdentifyAccount, Verify};
+use sp_runtime::{
+	traits::{IdentifyAccount, Verify},
+	Perbill,
+};
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
 pub type PopsicleChainSpec =
@@ -68,7 +71,7 @@ pub mod popsicle {
 	pub fn development_config() -> PopsicleChainSpec {
 		// Give your base currency a unit name and decimal places
 		let mut properties = sc_chain_spec::Properties::new();
-		properties.insert("tokenSymbol".into(), "UNIT".into());
+		properties.insert("tokenSymbol".into(), "POPS".into());
 		properties.insert("tokenDecimals".into(), 12.into());
 		properties.insert("ss58Format".into(), 42.into());
 
@@ -124,7 +127,7 @@ pub mod popsicle {
 	pub fn local_testnet_config() -> PopsicleChainSpec {
 		// Give your base currency a unit name and decimal places
 		let mut properties = sc_chain_spec::Properties::new();
-		properties.insert("tokenSymbol".into(), "UNIT".into());
+		properties.insert("tokenSymbol".into(), "POPS".into());
 		properties.insert("tokenDecimals".into(), 12.into());
 		properties.insert("ss58Format".into(), 42.into());
 
@@ -210,21 +213,15 @@ pub mod popsicle {
 			balances: popsicle_runtime::BalancesConfig {
 				balances: endowed_accounts.iter().cloned().map(|k| (k, 1 << 60)).collect(),
 			},
-			// Configure two assets ALT1 & ALT2 with two owners, alice and bob respectively
+			// Configure assets BTC with owner of Alice
 			assets: popsicle_runtime::AssetsConfig {
-				assets: vec![
-					(1, alice.into(), true, 100_000_000_000),
-					(2, bob.into(), true, 100_000_000_000),
-				],
+				assets: vec![(0, alice.into(), true, 100_000_000_000)],
 				// Genesis metadata: Vec<(id, name, symbol, decimals)>
-				metadata: vec![
-					(1, "asset-1".into(), "ALT1".into(), 10),
-					(2, "asset-2".into(), "ALT2".into(), 10),
-				],
+				metadata: vec![(0, "Bitcoin".into(), "BTC".into(), 8)],
 				// Genesis accounts: Vec<(id, account_id, balance)>
 				accounts: vec![
-					(1, alice.into(), 500_000_000_000),
-					(2, bob.into(), 500_000_000_000),
+					(0, alice.into(), 500_000_000_000_000_000),
+					(0, bob.into(), 500_000_000_000_000_000),
 				],
 			},
 			parachain_info: popsicle_runtime::ParachainInfoConfig {
@@ -248,8 +245,8 @@ pub mod popsicle {
 					})
 					.collect(),
 			},
-			// no need to pass anything to aura, in fact it will panic if we do. Session will take care
-			// of this.
+			// no need to pass anything to aura, in fact it will panic if we do. Session will take
+			// care of this.
 			aura: Default::default(),
 			aura_ext: Default::default(),
 			sudo: popsicle_runtime::SudoConfig { key: Some(root_key) },
@@ -259,6 +256,14 @@ pub mod popsicle {
 				..Default::default()
 			},
 			transaction_payment: Default::default(),
+			// for local pallets
+			sequencer_staking: popsicle_runtime::SequencerStakingConfig {
+				candidates: vec![alice.into(), bob.into()],
+				sequencer_commission: Perbill::from_percent(5),
+				blocks_per_round: 1440,
+				num_selected_candidates: 2,
+				..Default::default()
+			},
 		}
 	}
 }

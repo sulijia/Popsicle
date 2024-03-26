@@ -1,9 +1,10 @@
-use crate::pallet::{GroupNumber, GroupSize};
-use crate::{mock::*, Error, Event, GroupMembers, NextRound, SequencerGroup};
-use frame_support::pallet_prelude::Get;
-use frame_support::{assert_noop, assert_ok};
-use sp_runtime::testing::H256;
-use sp_runtime::traits::BadOrigin;
+use crate::{
+	mock::*,
+	pallet::{GroupNumber, GroupSize},
+	Error, Event, GroupMembers, NextRound, SequencerGroup,
+};
+use frame_support::{assert_noop, assert_ok, pallet_prelude::Get};
+use sp_runtime::{testing::H256, traits::BadOrigin};
 
 #[test]
 fn it_works_for_set_group_metric() {

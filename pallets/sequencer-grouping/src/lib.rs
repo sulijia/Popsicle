@@ -16,8 +16,10 @@ pub use weights::*;
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
-	use frame_support::pallet_prelude::*;
-	use frame_support::traits::{BuildGenesisConfig, Randomness};
+	use frame_support::{
+		pallet_prelude::*,
+		traits::{BuildGenesisConfig, Randomness},
+	};
 	use frame_system::pallet_prelude::*;
 	use sp_runtime::traits::Hash;
 	use sp_std::vec::Vec;
