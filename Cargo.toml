@@ -2,7 +2,7 @@
 panic = "unwind"
 
 [workspace]
-members = ["node", "pallets/*", "runtime/popsicle"]
+members = ["node", "pallets/*", "primitives/*", "runtime/popsicle"]
 resolver = "2"
 
 [workspace.package]
@@ -34,6 +34,8 @@ similar-asserts = "1.1.0"
 popsicle-runtime = { path = "runtime/popsicle" }
 runtime-common = { path = "runtime/common", default-features = false }
 pallet-sequencer-staking = { path = "pallets/sequencer-staking", default-features = false }
+pallet-container = { path = "pallets/container", default-features = false }
+primitives-container = {  path="./primitives/container", default-features = false }
 
 # Substrate
 frame-benchmarking = { version = "25.0.0", default-features = false }
@@ -49,6 +51,7 @@ pallet-authorship = { version = "25.0.0", default-features = false }
 pallet-assets = { version = "26.0.0", default-features = false }
 pallet-balances = { version = "25.0.0", default-features = false }
 pallet-collective = { version = "25.0.0", default-features = false }
+pallet-sequencer-grouping = { path = "pallets/sequencer-grouping", default-features = false}
 pallet-membership = { version = "25.0.0", default-features = false }
 pallet-session = { version = "25.0.0", default-features = false }
 pallet-sudo = { version = "25.0.0", default-features = false }
@@ -93,6 +96,7 @@ substrate-frame-rpc-system = { version = "25.0.0" }
 substrate-prometheus-endpoint = { version = "0.16.0" }
 substrate-wasm-builder = { version = "14.0.0" }
 try-runtime-cli = { version = "0.35.0" }
+sp-application-crypto= { version = "27.0.0"}
 
 # Cumulus
 assets-common = { version = "0.4.0", default-features = false }

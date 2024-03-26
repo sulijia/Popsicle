@@ -16,8 +16,10 @@ use cumulus_primitives_core::{relay_chain::CollatorPair, ParaId};
 use cumulus_relay_chain_interface::{OverseerHandle, RelayChainInterface};
 
 // Substrate Imports
+use crate::container_task::spawn_container_task;
 use frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE;
 use polkadot_primitives::ValidationCode;
+use primitives_container::ContainerRuntimeApi;
 use sc_client_api::Backend;
 use sc_consensus::ImportQueue;
 use sc_executor::{
@@ -34,10 +36,9 @@ use sp_core::Pair;
 use sp_keystore::KeystorePtr;
 use sp_runtime::{app_crypto::AppCrypto, traits::BlakeTwo256};
 use substrate_prometheus_endpoint::Registry;
-
 // Local Runtime types
 use runtime_common::{AccountId, AuraId, Balance, Block, Hash, Nonce};
-
+use sp_runtime::AccountId32;
 /// Popsicle Native executor type.
 pub struct PopsicleRuntimeExecutor;
 
@@ -94,7 +95,8 @@ where
 		+ sp_session::SessionKeys<Block>
 		+ sp_api::ApiExt<Block>
 		+ sp_offchain::OffchainWorkerApi<Block>
-		+ sp_block_builder::BlockBuilder<Block>,
+		+ sp_block_builder::BlockBuilder<Block>
+		+ ContainerRuntimeApi<Block, AccountId32>,
 	sc_client_api::StateBackendFor<TFullBackend<Block>, Block>: sp_api::StateBackend<BlakeTwo256>,
 	Executor: NativeExecutionDispatch + 'static,
 	BIQ: FnOnce(
@@ -203,7 +205,8 @@ where
 		+ cumulus_primitives_core::CollectCollationInfo<Block>
 		+ cumulus_primitives_aura::AuraUnincludedSegmentApi<Block>
 		+ pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
-		+ substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>,
+		+ substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>
+		+ ContainerRuntimeApi<Block, AccountId32>,
 
 	sc_client_api::StateBackendFor<TFullBackend<Block>, Block>: sp_api::StateBackend<BlakeTwo256>,
 	Executor: NativeExecutionDispatch + 'static,
@@ -243,7 +246,7 @@ where
 	let client = params.client.clone();
 	let backend = params.backend.clone();
 	let mut task_manager = params.task_manager;
-
+	let data_path = parachain_config.data_path.clone();
 	let (relay_chain_interface, collator_key) = build_relay_chain_interface(
 		polkadot_config,
 		&parachain_config,
@@ -394,6 +397,15 @@ where
 			overseer_handle,
 			announce_block,
 		)?;
+		spawn_container_task(
+			client.clone(),
+			para_id,
+			relay_chain_interface.clone(),
+			&task_manager,
+			params.keystore_container.keystore(),
+			data_path,
+			backend,
+		)?;
 	}
 
 	start_network.start_network();
@@ -420,7 +432,8 @@ where
 		+ sp_offchain::OffchainWorkerApi<Block>
 		+ sp_block_builder::BlockBuilder<Block>
 		+ sp_consensus_aura::AuraApi<Block, <<AuraId as AppCrypto>::Pair as Pair>::Public>
-		+ substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>,
+		+ substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>
+		+ ContainerRuntimeApi<Block, AccountId32>,
 {
 	let slot_duration = cumulus_client_consensus_aura::slot_duration(&*client)?;
 
@@ -478,7 +491,8 @@ where
 		+ cumulus_primitives_core::CollectCollationInfo<Block>
 		+ cumulus_primitives_aura::AuraUnincludedSegmentApi<Block>
 		+ pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
-		+ substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>,
+		+ substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>
+		+ ContainerRuntimeApi<Block, AccountId32>,
 	Executor: NativeExecutionDispatch + 'static,
 {
 	use cumulus_client_consensus_aura::collators::lookahead::{self as aura, Params as AuraParams};
@@ -558,7 +572,8 @@ where
 		+ cumulus_primitives_aura::AuraUnincludedSegmentApi<Block>
 		+ sp_consensus_aura::AuraApi<Block, <<AuraId as AppCrypto>::Pair as Pair>::Public>
 		+ pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
-		+ substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>,
+		+ substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>
+		+ ContainerRuntimeApi<Block, AccountId32>,
 {
 	start_node_impl::<RuntimeApi, Executor, _, _>(
 		parachain_config,

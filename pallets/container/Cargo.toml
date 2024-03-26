@@ -1,0 +1,60 @@
+[package]
+name = "pallet-container"
+version = "0.1.0"
+description = "FRAME pallet template for defining custom runtime logic."
+license = "MIT-0"
+publish = false
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.6.1", default-features = false, features = [
+	"derive",
+] }
+scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
+frame-benchmarking = { workspace = true }
+frame-support = { workspace = true }
+frame-system = { workspace = true }
+sp-runtime = { workspace = true }
+log = { version = "0.4.14", default-features = false }
+sp-std ={ workspace = true }
+primitives-container = {  workspace = true  }
+pallet-sequencer-grouping= {  workspace = true  }
+cumulus-primitives-core={ workspace = true }
+pallet-aura ={ workspace = true }
+sp-consensus-aura={ workspace = true }
+sp-core = { workspace = true }
+
+[dev-dependencies]
+serde = { version = "1.0.193" }
+
+# Substrate
+sp-core = { workspace = true }
+sp-io = { workspace = true }
+sp-runtime = { workspace = true}
+
+[features]
+default = ["std"]
+std = [
+	"codec/std",
+	"frame-benchmarking/std",
+	"frame-support/std",
+	"frame-system/std",
+	"scale-info/std",
+	"sp-runtime/std",
+	"log/std",
+	"sp-std/std",
+	"sp-core/std",
+	"primitives-container/std",
+	"cumulus-primitives-core/std",
+	"pallet-aura/std",
+	"sp-consensus-aura/std",
+	"pallet-sequencer-grouping/std",
+]
+runtime-benchmarks = ["frame-benchmarking/runtime-benchmarks"]
+try-runtime = ["frame-support/try-runtime"]

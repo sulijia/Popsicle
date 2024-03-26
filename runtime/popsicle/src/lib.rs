@@ -12,6 +12,7 @@ pub use fee::WeightToFee;
 
 use cumulus_pallet_parachain_system::RelayNumberMonotonicallyIncreases;
 use cumulus_primitives_core::{AssetId, Concrete};
+use pallet_sequencer_grouping::SimpleRandomness;
 use sp_api::impl_runtime_apis;
 use sp_core::{crypto::KeyTypeId, ConstBool, ConstU128, OpaqueMetadata};
 use sp_runtime::{
@@ -30,6 +31,7 @@ use frame_support::{
 	construct_runtime,
 	dispatch::{DispatchClass, PostDispatchInfo},
 	parameter_types,
+	sp_runtime::AccountId32,
 	traits::{AsEnsureOriginWithArg, ConstU32, ConstU64, ConstU8, EitherOfDiverse, Everything},
 	weights::{ConstantMultiplier, Weight},
 	PalletId,
@@ -38,7 +40,9 @@ use frame_system::{
 	limits::{BlockLength, BlockWeights},
 	EnsureRoot, EnsureSigned,
 };
+pub use pallet_container;
 use pallet_xcm::{EnsureXcm, IsVoiceOfBody};
+use primitives_container::DownloadInfo;
 pub use runtime_common::{
 	AVERAGE_ON_INITIALIZE_RATIO, DAYS, HOURS, MAXIMUM_BLOCK_WEIGHT, MILLISECS_PER_BLOCK, MINUTES,
 	NORMAL_DISPATCH_RATIO, SLOT_DURATION,
@@ -412,6 +416,14 @@ impl pallet_utility::Config for Runtime {
 	type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
 }
 
+impl pallet_sequencer_grouping::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type WeightInfo = pallet_sequencer_grouping::weights::SubstrateWeight<Runtime>;
+	type MaxGroupSize = ConstU32<100>;
+	type MaxGroupNumber = ConstU32<100>;
+	type Randomness = SimpleRandomness<Self>;
+}
+
 parameter_types! {
 	pub const ReservedXcmpWeight: Weight = MAXIMUM_BLOCK_WEIGHT.saturating_div(4);
 	pub const ReservedDmpWeight: Weight = MAXIMUM_BLOCK_WEIGHT.saturating_div(4);
@@ -549,6 +561,13 @@ impl pallet_collator_selection::Config for Runtime {
 	type ValidatorRegistration = Session;
 	type WeightInfo = ();
 }
+parameter_types! {
+	pub const MaxLengthFileName: u32 = 256;
+	pub const MaxRuningAPP: u32 = 100;
+	pub const MaxUrlLength: u32 = 300;
+	pub const MaxArgCount: u32 = 10;
+	pub const MaxArgLength: u32 = 100;
+}
 
 // Start of Popsicle pallets
 
@@ -626,6 +645,15 @@ impl pallet_sequencer_staking::Config for Runtime {
 	type WeightInfo = ();
 }
 
+impl pallet_container::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type WeightInfo = pallet_container::weights::SubstrateWeight<Runtime>;
+	type MaxLengthFileName = MaxLengthFileName;
+	type MaxRuningAPP = MaxRuningAPP;
+	type MaxUrlLength = MaxUrlLength;
+	type MaxArgCount = MaxArgCount;
+	type MaxArgLength = MaxArgLength;
+}
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub struct Runtime {
@@ -661,6 +689,8 @@ construct_runtime!(
 
 		// Popsicle pallets.
 		SequencerStaking: pallet_sequencer_staking = 40,
+		SequencerGroupingPallet: pallet_sequencer_grouping = 41,
+		ContainerPallet:pallet_container = 51,
 	}
 );
 
@@ -674,6 +704,8 @@ mod benches {
 		[pallet_timestamp, Timestamp]
 		[pallet_collator_selection, CollatorSelection]
 		[cumulus_pallet_xcmp_queue, XcmpQueue]
+		[pallet_container, ContainerPallet]
+		[pallet_sequencer_grouping, SequencerGroupingPallet]
 	);
 }
 
@@ -828,7 +860,23 @@ impl_runtime_apis! {
 			ParachainSystem::collect_collation_info(header)
 		}
 	}
+	impl primitives_container::ContainerRuntimeApi<Block, AccountId32> for Runtime {
 
+		fn shuld_load(author:AccountId32)->Option<DownloadInfo> {
+			ContainerPallet::shuld_load(author)
+		}
+
+		fn get_group_id(author:AccountId32) -> u32 {
+			ContainerPallet::get_group_id(author)
+		}
+
+		fn get_groups()->Vec<u32> {
+			ContainerPallet::get_groups()
+		}
+		fn should_run()-> bool {
+			ContainerPallet::should_run()
+		}
+	}
 	#[cfg(feature = "try-runtime")]
 	impl frame_try_runtime::TryRuntime<Block> for Runtime {
 		fn on_runtime_upgrade(checks: frame_try_runtime::UpgradeCheckSelect) -> (Weight, Weight) {

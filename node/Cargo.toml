@@ -18,9 +18,16 @@ parity-scale-codec = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+reqwest = { version = "0.11.24", features = ["blocking"] }
+tempfile="3.9.0"
+error-chain="0.12.4"
+ring="0.17.8"
+tokio = { version = "1.22.0", features = ["parking_lot", "rt-multi-thread", "time"] }
+
 # Local
 popsicle-runtime = { workspace = true }
 runtime-common = { workspace = true }
+primitives-container = { path = "../primitives/container"}
 
 # Substrate
 frame-benchmarking = { workspace = true }
@@ -57,6 +64,7 @@ sp-transaction-pool = { workspace = true }
 substrate-frame-rpc-system = { workspace = true }
 substrate-prometheus-endpoint = { workspace = true }
 try-runtime-cli = { workspace = true, optional = true }
+sp-application-crypto = {  workspace = true }
 
 # Polkadot
 polkadot-cli = { workspace = true }
