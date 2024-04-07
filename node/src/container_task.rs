@@ -433,7 +433,7 @@ async fn relay_chain_notification<P, R, Block, TBackend>(
 	};
 	pin_mut!(new_best_heads);
 	let runing_app = Arc::new(Mutex::new(RunningApp {
-		group_id: 0,
+		group_id: 0xFFFFFFFF,
 		running: false,
 		app_info: None,
 		instance: None,

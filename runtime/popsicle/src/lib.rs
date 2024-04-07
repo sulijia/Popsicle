@@ -633,7 +633,7 @@ impl pallet_sequencer_staking::Config for Runtime {
 	type OnInactiveSequencer = OnInactiveSequencer;
 	type OnNewRound = ();
 	/// Interface to call the SequencerGroup pallet
-	type SequencerGroup = ();
+	type SequencerGroup = SequencerGroupingPallet;
 	/// total rewardable native token per round
 	type RoundReward = ConstU128<{ 1 * POPS }>;
 	/// Account pallet id to manage rewarding native token and staked BTC

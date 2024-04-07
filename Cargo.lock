@@ -7072,6 +7072,7 @@ dependencies = [
  "log",
  "pallet-assets",
  "pallet-balances",
+ "pallet-sequencer-grouping",
  "parity-scale-codec",
  "popsicle-runtime",
  "scale-info",
