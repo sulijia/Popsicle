@@ -48,7 +48,7 @@ pub mod pallet {
 		DispatchErrorWithPostInfo, Perbill,
 	};
 	use sp_std::{collections::btree_map::BTreeMap, prelude::*};
-
+	use pallet_sequencer_grouping::SequencerGroup;
 	// Round index type
 	pub type RoundIndex = u32;
 	// Reward points type
@@ -137,7 +137,7 @@ pub mod pallet {
 		/// If you don't need it, you can specify the type `()`.
 		type OnNewRound: OnNewRound;
 		// An interface to call the sequencer-group pallet
-		type SequencerGroup: SequencerGroup<AccountIdOf<Self>, BlockNumberFor<Self>>;
+		type SequencerGroup: pallet_sequencer_grouping::SequencerGroup<AccountIdOf<Self>, BlockNumberFor<Self>>;
 		/// The native token reward for a round
 		#[pallet::constant]
 		type RoundReward: Get<BalanceOf<Self>>;
