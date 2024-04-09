@@ -99,6 +99,9 @@ pub mod pallet {
 			hash: Hash,
 			size: u32,
 		},
+		SetDownloadURL {
+			url: BoundedVec<u8, T::MaxUrlLength>,
+		},
 	}
 
 	#[pallet::error]
@@ -204,17 +207,20 @@ pub mod pallet {
 		) -> DispatchResult {
 			ensure_root(origin)?;
 
-			DefaultUrl::<T>::put(url);
+			DefaultUrl::<T>::put(url.clone());
 
+			Pallet::<T>::deposit_event(Event::<T>::SetDownloadURL { url });
 			Ok(())
 		}
 	}
 }
 
 impl<T: Config> Pallet<T> {
+	// Obtain application information corresponding to the group.
+	// If no group has been assigned or there are no available apps in the group, return None
 	pub fn shuld_load(author: T::AccountId) -> Option<DownloadInfo> {
 		log::info!("============author:{:?}", author.encode());
-
+		//Get the group ID of the sequencer, error when got 0xFFFFFFFF
 		let group_id = Self::get_group_id(author);
 
 		let app_id = GroupAPPMap::<T>::get(group_id)?;
@@ -257,7 +263,7 @@ impl<T: Config> Pallet<T> {
 		if group_id_result.is_ok() {
 			group_id_result.unwrap()
 		} else {
-			0
+			0xFFFFFFFF
 		}
 	}
 	pub fn get_groups() -> Vec<u32> {
