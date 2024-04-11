@@ -106,8 +106,8 @@ pub mod pallet {
 		#[pallet::constant]
 		type RewardPaymentDelay: Get<RoundIndex>;
 		/// Minimum number of selected candidates every round
-		#[pallet::constant]
-		type MinSelectedCandidates: Get<u32>;
+		// #[pallet::constant]
+		// type MinSelectedCandidates: Get<u32>;
 		/// Maximum top delegations counted per candidate
 		#[pallet::constant]
 		type MaxTopDelegationsPerCandidate: Get<u32>;
@@ -162,9 +162,9 @@ pub mod pallet {
 	/// Commission percent taken off of rewards for all sequencers
 	pub(crate) type SequencerCommission<T: Config> = StorageValue<_, Perbill, ValueQuery>;
 
-	#[pallet::storage]
-	/// The total candidates selected every round
-	pub(crate) type TotalSelected<T: Config> = StorageValue<_, u32, ValueQuery>;
+	// #[pallet::storage]
+	// /// The total candidates selected every round
+	// pub(crate) type TotalSelected<T: Config> = StorageValue<_, u32, ValueQuery>;
 
 	#[pallet::storage]
 	/// Current round index and next round scheduled transition
@@ -289,8 +289,8 @@ pub mod pallet {
 		pub sequencer_commission: Perbill,
 		/// Default number of blocks in a round
 		pub blocks_per_round: u32,
-		/// Number of selected candidates every round. Cannot be lower than MinSelectedCandidates
-		pub num_selected_candidates: u32,
+		// /// Number of selected candidates every round. Cannot be lower than MinSelectedCandidates
+		// pub num_selected_candidates: u32,
 	}
 
 	impl<T: Config> Default for GenesisConfig<T> {
@@ -300,7 +300,7 @@ pub mod pallet {
 				delegations: vec![],
 				sequencer_commission: Default::default(),
 				blocks_per_round: 1u32,
-				num_selected_candidates: T::MinSelectedCandidates::get(),
+				// num_selected_candidates: T::MinSelectedCandidates::get(),
 			}
 		}
 	}
@@ -375,19 +375,19 @@ pub mod pallet {
 			// Set sequencer commission to default config
 			<SequencerCommission<T>>::put(self.sequencer_commission);
 
-			// Set total selected candidates to value from config
-			assert!(
-				self.num_selected_candidates >= T::MinSelectedCandidates::get(),
-				"{:?}",
-				Error::<T>::CannotSetBelowMin
-			);
-			assert!(
-				self.num_selected_candidates <= T::MaxCandidates::get(),
-				"{:?}",
-				Error::<T>::CannotSetAboveMaxCandidates
-			);
+			// // Set total selected candidates to value from config
+			// assert!(
+			// 	self.num_selected_candidates >= T::MinSelectedCandidates::get(),
+			// 	"{:?}",
+			// 	Error::<T>::CannotSetBelowMin
+			// );
+			// assert!(
+			// 	self.num_selected_candidates <= T::MaxCandidates::get(),
+			// 	"{:?}",
+			// 	Error::<T>::CannotSetAboveMaxCandidates
+			// );
 
-			<TotalSelected<T>>::put(self.num_selected_candidates);
+			// <TotalSelected<T>>::put(self.num_selected_candidates);
 
 			// Choose top TotalSelected sequencer candidates
 			let (_, v_count, _, _total_staked) = <Pallet<T>>::select_top_candidates(1u32);
@@ -682,22 +682,23 @@ pub mod pallet {
 		}
 		/// Set the total number of sequencer candidates selected per round
 		/// - changes are not applied until the next snapshot time point
-		#[pallet::call_index(1)]
-		#[pallet::weight(<T as Config>::WeightInfo::set_total_selected())]
-		pub fn set_total_selected(origin: OriginFor<T>, new: u32) -> DispatchResultWithPostInfo {
-			frame_system::ensure_root(origin)?;
-			ensure!(new >= T::MinSelectedCandidates::get(), Error::<T>::CannotSetBelowMin);
-			ensure!(new <= T::MaxCandidates::get(), Error::<T>::CannotSetAboveMaxCandidates);
-			let old = <TotalSelected<T>>::get();
-			ensure!(old != new, Error::<T>::NoWritingSameValue);
-			ensure!(
-				new < <Round<T>>::get().length,
-				Error::<T>::RoundLengthMustBeGreaterThanTotalSelectedSequencers,
-			);
-			<TotalSelected<T>>::put(new);
-			Self::deposit_event(Event::TotalSelectedSet { old, new });
-			Ok(().into())
-		}
+		// #[pallet::call_index(1)]
+		// #[pallet::weight(<T as Config>::WeightInfo::set_total_selected())]
+		// pub fn set_total_selected(origin: OriginFor<T>, new: u32) -> DispatchResultWithPostInfo {
+		// 	frame_system::ensure_root(origin)?;
+		// 	ensure!(new >= T::MinSelectedCandidates::get(), Error::<T>::CannotSetBelowMin);
+		// 	ensure!(new <= T::MaxCandidates::get(), Error::<T>::CannotSetAboveMaxCandidates);
+		// 	// let old = SequencerGroup::total_selected();
+		// 	let old = SequencerGroup::total_selected();
+		// 	ensure!(old != new, Error::<T>::NoWritingSameValue);
+		// 	ensure!(
+		// 		new < <Round<T>>::get().length,
+		// 		Error::<T>::RoundLengthMustBeGreaterThanTotalSelectedSequencers,
+		// 	);
+		// 	<TotalSelected<T>>::put(new);
+		// 	Self::deposit_event(Event::TotalSelectedSet { old, new });
+		// 	Ok(().into())
+		// }
 
 		/// Set the commission for all sequencers
 		#[pallet::call_index(2)]
@@ -728,7 +729,7 @@ pub mod pallet {
 
 			ensure!(old != new, Error::<T>::NoWritingSameValue);
 			ensure!(
-				new > <TotalSelected<T>>::get(),
+				new > T::SequencerGroup::total_selected(),
 				Error::<T>::RoundLengthMustBeGreaterThanTotalSelectedSequencers,
 			);
 
@@ -1047,7 +1048,7 @@ pub mod pallet {
 			ensure_signed(origin)?;
 
 			let mut sequencers_len = 0usize;
-			let max_sequencers = <TotalSelected<T>>::get();
+			let max_sequencers = T::SequencerGroup::total_selected();
 
 			if let Some(len) = <SelectedCandidates<T>>::decode_len() {
 				sequencers_len = len;
@@ -1660,7 +1661,7 @@ pub mod pallet {
 		///
 		/// If the returned vec is empty, the previous candidates should be used.
 		pub fn compute_top_candidates() -> Vec<AccountIdOf<T>> {
-			let top_n = <TotalSelected<T>>::get() as usize;
+			let top_n = T::SequencerGroup::total_selected() as usize;
 			if top_n == 0 {
 				return vec![];
 			}

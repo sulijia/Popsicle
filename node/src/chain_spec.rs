@@ -261,7 +261,7 @@ pub mod popsicle {
 				candidates: vec![alice.into(), bob.into()],
 				sequencer_commission: Perbill::from_percent(5),
 				blocks_per_round: 1440,
-				num_selected_candidates: 2,
+				// num_selected_candidates: 2,
 				..Default::default()
 			},
 		}

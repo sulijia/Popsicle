@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use crate as pallet_sequencer_staking;
 use crate::SEQUENCER_LOCK_ID;
 use frame_support::{
@@ -10,6 +11,7 @@ use frame_support::{
 	weights::constants::RocksDbWeight,
 	PalletId,
 };
+use frame_support::pallet_prelude::ConstU32;
 use frame_system as system;
 use frame_system::pallet_prelude::BlockNumberFor;
 use popsicle_runtime::POPS;
@@ -34,6 +36,7 @@ frame_support::construct_runtime!(
 		Balances: pallet_balances,
 		Assets: pallet_assets,
 		SequencerStaking: pallet_sequencer_staking,
+		SequencerGrouping: pallet_sequencer_grouping,
 	}
 );
 
@@ -123,6 +126,14 @@ impl pallet_assets::Config for Test {
 	type BenchmarkHelper = ();
 }
 
+impl pallet_sequencer_grouping::Config for Test {
+	type RuntimeEvent = RuntimeEvent;
+	type WeightInfo = ();
+	type Randomness = pallet_sequencer_grouping::SimpleRandomness<Self>;
+	type MaxGroupSize = ConstU32<5u32>;
+	type MaxGroupNumber = ConstU32<10u32>;
+}
+
 parameter_types! {
 	pub const MinBlocksPerRound: u32 = 3;
 	pub const MaxOfflineRounds: u32 = 1;
@@ -132,7 +143,7 @@ parameter_types! {
 	pub const RevokeDelegationDelay: u32 = 2;
 	pub const DelegationBondLessDelay: u32 = 2;
 	pub const RewardPaymentDelay: u32 = 2;
-	pub const MinSelectedCandidates: u32 = GENESIS_NUM_SELECTED_CANDIDATES;
+	// pub const MinSelectedCandidates: u32 = GENESIS_NUM_SELECTED_CANDIDATES;
 	pub const MaxTopDelegationsPerCandidate: u32 = 4;
 	pub const MaxBottomDelegationsPerCandidate: u32 = 4;
 	pub const MaxDelegationsPerDelegator: u32 = 4;
@@ -170,8 +181,8 @@ impl crate::Config for Test {
 	type DelegationBondLessDelay = DelegationBondLessDelay;
 	/// Rounds before the reward is paid,
 	type RewardPaymentDelay = RewardPaymentDelay;
-	/// Minimum sequencers selected per round, default at genesis and minimum forever after
-	type MinSelectedCandidates = MinSelectedCandidates;
+	// /// Minimum sequencers selected per round, default at genesis and minimum forever after
+	// type MinSelectedCandidates = MinSelectedCandidates;
 	/// Maximum top delegations per candidate
 	type MaxTopDelegationsPerCandidate = MaxTopDelegationsPerCandidate;
 	/// Maximum bottom delegations per candidate
@@ -187,7 +198,7 @@ impl crate::Config for Test {
 	type OnInactiveSequencer = ();
 	type OnNewRound = ();
 	/// Interface to call the SequencerGroup pallet
-	type SequencerGroup = ();
+	type SequencerGroup = SequencerGrouping;
 	/// total rewardable native token per round
 	type RoundReward = RoundReward;
 	/// Account pallet id to manage rewarding native token and staked BTC
@@ -276,12 +287,20 @@ impl ExtBuilder {
 		.assimilate_storage(&mut t)
 		.expect("Pallet Assets storage can be assimilated");
 
+		pallet_sequencer_grouping::GenesisConfig::<Test> {
+			group_size: 5,
+			group_number: 1,
+			_marker: PhantomData,
+		}
+			.assimilate_storage(&mut t)
+			.expect("Sequencer Grouping storage can be assimilated");
+
 		pallet_sequencer_staking::GenesisConfig::<Test> {
 			candidates: self.sequencers,
 			delegations: self.delegations,
 			sequencer_commission: GENESIS_SEQUENCER_COMMISSION,
 			blocks_per_round: GENESIS_BLOCKS_PER_ROUND as u32,
-			num_selected_candidates: GENESIS_NUM_SELECTED_CANDIDATES,
+			// num_selected_candidates: GENESIS_NUM_SELECTED_CANDIDATES,
 		}
 		.assimilate_storage(&mut t)
 		.expect("Sequencer Staking's storage can be assimilated");

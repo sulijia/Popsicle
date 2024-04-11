@@ -1,14 +1,14 @@
 use crate::{
-	delegation_requests::{CancelledScheduledRequest, DelegationAction, ScheduledRequest},
+	delegation_requests::{DelegationAction, ScheduledRequest},
 	mock::{
 		roll_blocks, roll_to, roll_to_round_begin, roll_to_round_end, Balances, BlockNumber,
 		ExtBuilder, RuntimeOrigin, SequencerStaking, Test,
 	},
-	AtStake, Bond, DelegationScheduledRequests, DelegatorAdded, EnableMarkingOffline, Error, Event,
+	AtStake, Bond, DelegationScheduledRequests, EnableMarkingOffline, Error,
 	SequencerStatus, *,
 };
 use frame_support::{
-	assert_err, assert_noop, assert_ok,
+	assert_noop, assert_ok,
 	pallet_prelude::*,
 	traits::{
 		fungibles::Inspect,
@@ -19,8 +19,9 @@ use frame_support::{
 };
 use mock::*;
 use sp_runtime::{
-	traits::Zero, DispatchError, DispatchError::Module, ModuleError, Perbill, Percent,
+	traits::Zero, DispatchError::Module, ModuleError, Perbill,
 };
+use pallet_sequencer_grouping::SequencerGroup;
 
 // ~~ ROOT ~~
 
@@ -51,10 +52,10 @@ fn charge_reward_account_works() {
 #[test]
 fn invalid_root_origin_fails() {
 	ExtBuilder::default().build().execute_with(|| {
-		assert_noop!(
-			SequencerStaking::set_total_selected(RuntimeOrigin::signed(45), 6u32),
-			sp_runtime::DispatchError::BadOrigin
-		);
+		// assert_noop!(
+		// 	SequencerStaking::set_total_selected(RuntimeOrigin::signed(45), 6u32),
+		// 	sp_runtime::DispatchError::BadOrigin
+		// );
 		assert_noop!(
 			SequencerStaking::set_sequencer_commission(
 				RuntimeOrigin::signed(45),
@@ -71,52 +72,53 @@ fn invalid_root_origin_fails() {
 
 // SET TOTAL SELECTED
 
-#[test]
-fn set_total_selected_fails_if_above_blocks_per_round() {
-	ExtBuilder::default().build().execute_with(|| {
-		assert_eq!(Round::<Test>::get().length, 5); // test relies on this
-		assert_noop!(
-			SequencerStaking::set_total_selected(RuntimeOrigin::root(), 6u32),
-			Error::<Test>::RoundLengthMustBeGreaterThanTotalSelectedSequencers,
-		);
-	});
-}
+// #[test]
+// fn set_total_selected_fails_if_above_blocks_per_round() {
+// 	ExtBuilder::default().build().execute_with(|| {
+// 		assert_eq!(Round::<Test>::get().length, 5); // test relies on this
+// 		assert_noop!(
+// 			SequencerStaking::set_total_selected(RuntimeOrigin::root(), 6u32),
+// 			Error::<Test>::RoundLengthMustBeGreaterThanTotalSelectedSequencers,
+// 		);
+// 	});
+// }
 
-#[test]
-fn set_total_selected_fails_if_above_max_candidates() {
-	ExtBuilder::default().build().execute_with(|| {
-		assert_eq!(<Test as crate::Config>::MaxCandidates::get(), 200); // test relies on this
-		assert_noop!(
-			SequencerStaking::set_total_selected(RuntimeOrigin::root(), 201u32),
-			Error::<Test>::CannotSetAboveMaxCandidates,
-		);
-	});
-}
+// #[test]
+// fn set_total_selected_fails_if_above_max_candidates() {
+// 	ExtBuilder::default().build().execute_with(|| {
+// 		assert_eq!(<Test as crate::Config>::MaxCandidates::get(), 200); // test relies on this
+// 		assert_noop!(
+// 			SequencerStaking::set_total_selected(RuntimeOrigin::root(), 201u32),
+// 			Error::<Test>::CannotSetAboveMaxCandidates,
+// 		);
+// 	});
+// }
 
-#[test]
-fn set_total_selected_fails_if_equal_to_blocks_per_round() {
-	ExtBuilder::default().build().execute_with(|| {
-		assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 10u32));
-		assert_noop!(
-			SequencerStaking::set_total_selected(RuntimeOrigin::root(), 10u32),
-			Error::<Test>::RoundLengthMustBeGreaterThanTotalSelectedSequencers,
-		);
-	});
-}
+// #[test]
+// fn set_total_selected_fails_if_equal_to_blocks_per_round() {
+// 	ExtBuilder::default().build().execute_with(|| {
+// 		assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 10u32));
+// 		assert_noop!(
+// 			SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 1u32),
+// 			Error::<Test>::RoundLengthMustBeGreaterThanTotalSelectedSequencers,
+// 		);
+// 	});
+// }
 
-#[test]
-fn set_total_selected_passes_if_below_blocks_per_round() {
-	ExtBuilder::default().build().execute_with(|| {
-		assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 10u32));
-		assert_ok!(SequencerStaking::set_total_selected(RuntimeOrigin::root(), 9u32));
-	});
-}
+// #[test]
+// fn set_total_selected_passes_if_below_blocks_per_round() {
+// 	ExtBuilder::default().build().execute_with(|| {
+// 		assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 10u32));
+// 		assert_ok!(SequencerStaking::set_total_selected(RuntimeOrigin::root(), 9u32));
+// 	});
+// }
 
 #[test]
 fn set_blocks_per_round_fails_if_below_total_selected() {
 	ExtBuilder::default().build().execute_with(|| {
-		assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 20u32));
-		assert_ok!(SequencerStaking::set_total_selected(RuntimeOrigin::root(), 10u32));
+		// assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 20u32));
+		// assert_ok!(SequencerStaking::set_total_selected(RuntimeOrigin::root(), 10u32));
+		assert_ok!(<Test as crate::Config>::SequencerGroup::set_group_metric(RuntimeOrigin::root(), 2u32, 5u32));
 		assert_noop!(
 			SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 9u32),
 			Error::<Test>::RoundLengthMustBeGreaterThanTotalSelectedSequencers,
@@ -127,10 +129,11 @@ fn set_blocks_per_round_fails_if_below_total_selected() {
 #[test]
 fn set_blocks_per_round_fails_if_equal_to_total_selected() {
 	ExtBuilder::default().build().execute_with(|| {
-		assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 10u32));
-		assert_ok!(SequencerStaking::set_total_selected(RuntimeOrigin::root(), 9u32));
+		// assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 10u32));
+		// assert_ok!(SequencerStaking::set_total_selected(RuntimeOrigin::root(), 9u32));
+		assert_ok!(<Test as crate::Config>::SequencerGroup::set_group_metric(RuntimeOrigin::root(), 2u32, 3u32));
 		assert_noop!(
-			SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 9u32),
+			SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 6u32),
 			Error::<Test>::RoundLengthMustBeGreaterThanTotalSelectedSequencers,
 		);
 	});
@@ -140,41 +143,42 @@ fn set_blocks_per_round_fails_if_equal_to_total_selected() {
 fn set_blocks_per_round_passes_if_above_total_selected() {
 	ExtBuilder::default().build().execute_with(|| {
 		assert_eq!(Round::<Test>::get().length, 5); // test relies on this
-		assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 6u32));
+		assert_ok!(<Test as crate::Config>::SequencerGroup::set_group_metric(RuntimeOrigin::root(), 2u32, 3u32));
+		assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 7u32));
 	});
 }
 
-#[test]
-fn set_total_selected_storage_updates_correctly() {
-	ExtBuilder::default().build().execute_with(|| {
-		// round length must be >= total_selected, so update that first
-		assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 10u32));
+// #[test]
+// fn set_total_selected_storage_updates_correctly() {
+// 	ExtBuilder::default().build().execute_with(|| {
+// 		// round length must be >= total_selected, so update that first
+// 		assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 10u32));
+//
+// 		assert_eq!(TotalSelected::<Test>::get(), 5u32);
+// 		assert_ok!(SequencerStaking::set_total_selected(RuntimeOrigin::root(), 6u32));
+// 		assert_eq!(TotalSelected::<Test>::get(), 6u32);
+// 	});
+// }
 
-		assert_eq!(TotalSelected::<Test>::get(), 5u32);
-		assert_ok!(SequencerStaking::set_total_selected(RuntimeOrigin::root(), 6u32));
-		assert_eq!(TotalSelected::<Test>::get(), 6u32);
-	});
-}
+// #[test]
+// fn cannot_set_total_selected_to_current_total_selected() {
+// 	ExtBuilder::default().build().execute_with(|| {
+// 		assert_noop!(
+// 			SequencerStaking::set_total_selected(RuntimeOrigin::root(), 5u32),
+// 			Error::<Test>::NoWritingSameValue
+// 		);
+// 	});
+// }
 
-#[test]
-fn cannot_set_total_selected_to_current_total_selected() {
-	ExtBuilder::default().build().execute_with(|| {
-		assert_noop!(
-			SequencerStaking::set_total_selected(RuntimeOrigin::root(), 5u32),
-			Error::<Test>::NoWritingSameValue
-		);
-	});
-}
-
-#[test]
-fn cannot_set_total_selected_below_module_min() {
-	ExtBuilder::default().build().execute_with(|| {
-		assert_noop!(
-			SequencerStaking::set_total_selected(RuntimeOrigin::root(), 4u32),
-			Error::<Test>::CannotSetBelowMin
-		);
-	});
-}
+// #[test]
+// fn cannot_set_total_selected_below_module_min() {
+// 	ExtBuilder::default().build().execute_with(|| {
+// 		assert_noop!(
+// 			SequencerStaking::set_total_selected(RuntimeOrigin::root(), 4u32),
+// 			Error::<Test>::CannotSetBelowMin
+// 		);
+// 	});
+// }
 
 // SET COLLATOR COMMISSION
 
@@ -3705,6 +3709,7 @@ fn deferred_payment_and_at_stake_storage_items_cleaned_up_for_candidates_not_pro
 		.with_candidates(vec![1, 2, 3])
 		.build()
 		.execute_with(|| {
+			assert_ok!(SequencerGrouping::set_group_metric(RuntimeOrigin::root(), 2u32, 3u32));
 			AwardedPts::<Test>::set(1, 1, 1);
 			AwardedPts::<Test>::set(1, 2, 1);
 			// 1+1 = 2
@@ -4479,7 +4484,7 @@ fn test_compute_top_candidates_is_stable() {
 		.execute_with(|| {
 			// There are 6 candidates with equal amount, but only 5 can be selected
 			assert_eq!(CandidatePool::<Test>::get().0.len(), 6);
-			assert_eq!(TotalSelected::<Test>::get(), 5);
+			assert_eq!(<Test as crate::Config>::SequencerGroup::total_selected(), 5);
 			// Returns the 5 candidates with greater AccountId, because they are iterated in reverse
 			assert_eq!(SequencerStaking::compute_top_candidates(), vec![2, 3, 4, 5, 6]);
 		});

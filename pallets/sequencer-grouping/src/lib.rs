@@ -47,6 +47,7 @@ pub mod pallet {
 	}
 
 	pub trait SequencerGroup<AccountId, BlockNumber> {
+		fn total_selected() -> u32;
 		fn trigger_group(
 			candidates: Vec<AccountId>,
 			starting_block: BlockNumber,
@@ -90,7 +91,7 @@ pub mod pallet {
 	pub struct GenesisConfig<T: Config> {
 		pub group_size: u32,
 		pub group_number: u32,
-		_marker: PhantomData<T>,
+		pub _marker: PhantomData<T>,
 	}
 
 	impl<T: Config> Default for GenesisConfig<T> {
@@ -194,6 +195,9 @@ pub mod pallet {
 	}
 
 	impl<T: Config> SequencerGroup<T::AccountId, BlockNumberFor<T>> for Pallet<T> {
+		fn total_selected() -> u32 {
+			GroupSize::<T>::get() * GroupNumber::<T>::get()
+		}
 		fn trigger_group(
 			candidates: Vec<T::AccountId>,
 			starting_block: BlockNumberFor<T>,
