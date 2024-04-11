@@ -616,8 +616,8 @@ impl pallet_sequencer_staking::Config for Runtime {
 	type DelegationBondLessDelay = ConstU32<3>;
 	/// Rounds before the reward is paid,
 	type RewardPaymentDelay = ConstU32<2>;
-	/// Minimum sequencers selected per round, default at genesis and minimum forever after
-	type MinSelectedCandidates = ConstU32<2>;
+	// /// Minimum sequencers selected per round, default at genesis and minimum forever after
+	// type MinSelectedCandidates = ConstU32<2>;
 	/// Maximum top delegations per candidate
 	type MaxTopDelegationsPerCandidate = ConstU32<300>;
 	/// Maximum bottom delegations per candidate

@@ -1,30 +1,10 @@
-use crate::{weights::WeightInfo, BalanceOf, RewardPoint, RoundIndex};
+use crate::{weights::WeightInfo, BalanceOf, RewardPoint};
 use frame_support::{
 	dispatch::PostDispatchInfo,
-	pallet_prelude::{DispatchResultWithPostInfo, Weight},
+	pallet_prelude::Weight,
 	traits::Get,
 };
 use sp_runtime::{DispatchErrorWithPostInfo, DispatchResult};
-use sp_std::vec::Vec;
-
-// TODO: SequencerGroup trait for temp, delete later
-pub trait SequencerGroup<AccountId, BlockNumber> {
-	fn trigger_group(
-		candidates: Vec<AccountId>,
-		starting_block: BlockNumber,
-		round_index: RoundIndex,
-	) -> DispatchResultWithPostInfo;
-}
-
-impl<AccountId, BlockNumber> SequencerGroup<AccountId, BlockNumber> for () {
-	fn trigger_group(
-		_candidates: Vec<AccountId>,
-		_starting_block: BlockNumber,
-		_round_index: RoundIndex,
-	) -> DispatchResultWithPostInfo {
-		Ok(().into())
-	}
-}
 
 pub trait SequencerStakingInterface<AccountId> {
 	fn award_points_to_sequencer(sequencer: AccountId, points: RewardPoint) -> DispatchResult;
