@@ -1,11 +1,11 @@
 use frame_support::{parameter_types, traits::Everything};
 use frame_system as system;
-use sp_core::H256;
+use pallet_sequencer_grouping::SimpleRandomness;
+use sp_core::{ConstU32, H256};
 use sp_runtime::{
 	traits::{BlakeTwo256, IdentityLookup},
 	BuildStorage,
 };
-
 type Block = frame_system::mocking::MockBlock<Test>;
 
 // Configure a mock runtime to test the pallet.
@@ -51,6 +51,10 @@ impl system::Config for Test {
 
 impl pallet_sequencer_grouping::Config for Test {
 	type RuntimeEvent = RuntimeEvent;
+	type WeightInfo = ();
+	type MaxGroupSize = ConstU32<100>;
+	type MaxGroupNumber = ConstU32<100>;
+	type Randomness = SimpleRandomness<Self>;
 }
 
 parameter_types! {
