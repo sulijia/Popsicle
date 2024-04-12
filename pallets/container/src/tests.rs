@@ -27,7 +27,7 @@ fn register_app() {
 			H256::from([1; 32]),
 			BoundedVec::try_from("test".as_bytes().to_vec()).unwrap(),
 			123,
-			BoundedVec::try_from("--chain dev".as_bytes().to_vec()).unwrap(),
+			Some(BoundedVec::try_from("--chain dev".as_bytes().to_vec()).unwrap()),
 			None
 		));
 		let app = ContainerModule::appinfo_map(1).unwrap();

@@ -1,9 +1,5 @@
 use crate::{weights::WeightInfo, BalanceOf, RewardPoint};
-use frame_support::{
-	dispatch::PostDispatchInfo,
-	pallet_prelude::Weight,
-	traits::Get,
-};
+use frame_support::{dispatch::PostDispatchInfo, pallet_prelude::Weight, traits::Get};
 use sp_runtime::{DispatchErrorWithPostInfo, DispatchResult};
 
 pub trait SequencerStakingInterface<AccountId> {
