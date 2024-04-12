@@ -34,6 +34,7 @@ use std::{
 	sync::Arc,
 };
 pub const RUN_ARGS_KEY: &[u8] = b"run_args";
+pub const SYNC_ARGS_KEY: &[u8] = b"sync_args";
 
 struct PartialRangeIter {
 	start: u64,
@@ -170,26 +171,43 @@ async fn need_download(
 		Ok(true)
 	}
 }
+
+#[derive(Debug, PartialEq, Eq)]
+enum StartType {
+	SYNC,
+	RUN,
+}
+#[derive(Debug, PartialEq, Eq)]
+enum InstanceIndex {
+	Instance1,
+	Instance2,
+}
+
 #[derive(Debug)]
 struct RunningApp {
 	group_id: u32,
 	running: bool,
 	app_info: Option<DownloadInfo>,
-	instance: Option<Child>,
+	instance1: Option<Child>,
+	instance2: Option<Child>,
+	cur_ins: InstanceIndex,
 }
+
 async fn process_download_task(
 	data_path: PathBuf,
 	app_info: DownloadInfo,
 	running_app: Arc<Mutex<RunningApp>>,
+	new_group: u32,
+	sync_args: Option<Vec<u8>>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-	let url = std::str::from_utf8(&app_info.url).unwrap();
+	let url = std::str::from_utf8(&app_info.url)?;
 
 	let mut start_flag = false;
 
 	let download_path = format!(
 		"{}/sdk/{}",
-		data_path.as_os_str().to_str().unwrap(),
-		std::str::from_utf8(&app_info.file_name).unwrap()
+		data_path.as_os_str().to_str().ok_or("invalid data_path")?,
+		std::str::from_utf8(&app_info.file_name)?
 	);
 
 	let need_download = need_download(&download_path, app_info.app_hash).await;
@@ -205,15 +223,24 @@ async fn process_download_task(
 				log::info!("download sdk error:{:?}", result);
 			}
 		} else {
-			//only download then start
-			// start_flag = true;
+			start_flag = true;
 		}
 	}
 
 	if start_flag {
+		log::info!("===============start app for sync=================");
+		let result = process_run_task(
+			data_path,
+			app_info.clone(),
+			sync_args,
+			running_app.clone(),
+			StartType::SYNC,
+		)
+		.await;
+		log::info!("start result:{:?}", result);
 		let mut app = running_app.lock().await;
-
 		app.app_info = Some(app_info);
+		app.group_id = new_group;
 	}
 	Ok(())
 }
@@ -223,6 +250,7 @@ async fn process_run_task(
 	app_info: DownloadInfo,
 	run_args: Option<Vec<u8>>,
 	running_app: Arc<Mutex<RunningApp>>,
+	start_type: StartType,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
 	let download_path = format!(
 		"{}/sdk/{}",
@@ -279,6 +307,16 @@ async fn process_run_task(
 	log::info!("log_file_name:{:?}", log_file_name);
 	log::info!("args:{:?}", args);
 
+	let mut app = running_app.lock().await;
+	let old_instance = if app.cur_ins == InstanceIndex::Instance1 {
+		&mut app.instance1
+	} else {
+		&mut app.instance2
+	};
+	if let Some(ref mut old_instance) = old_instance {
+		let kill_result = old_instance.kill();
+		log::info!("kill old instance:{:?}", kill_result);
+	}
 	let outputs = File::create(log_file_name)?;
 
 	let errors = outputs.try_clone()?;
@@ -290,15 +328,34 @@ async fn process_run_task(
 		.args(args)
 		.spawn()
 		.expect("failed to execute process");
-
-	let mut app = running_app.lock().await;
-	let old_instance = &mut app.instance;
-	if let Some(ref mut old_instance) = old_instance {
-		let kill_result = old_instance.kill();
-		log::info!("kill old instance:{:?}", kill_result);
+	if start_type == StartType::RUN {
+		if app.cur_ins == InstanceIndex::Instance1 {
+			let other_instance = &mut app.instance2;
+			if let Some(ref mut other_instance) = other_instance {
+				let kill_result = other_instance.kill();
+				log::info!("kill instance2:{:?}", kill_result);
+			}
+			app.cur_ins = InstanceIndex::Instance2;
+			app.instance1 = Some(instance);
+			app.instance2 = None;
+		} else {
+			let other_instance = &mut app.instance1;
+			if let Some(ref mut other_instance) = other_instance {
+				let kill_result = other_instance.kill();
+				log::info!("kill instance1:{:?}", kill_result);
+			}
+			app.cur_ins = InstanceIndex::Instance1;
+			app.instance2 = Some(instance);
+			app.instance1 = None;
+		}
+	} else {
+		if app.cur_ins == InstanceIndex::Instance1 {
+			app.instance1 = Some(instance);
+		} else {
+			app.instance2 = Some(instance);
+		}
 	}
-	app.instance = Some(instance);
-
+	log::info!("app:{:?}", app);
 	Ok(())
 }
 
@@ -323,15 +380,14 @@ where
 {
 	let offchain_storage = backend.offchain_storage();
 
-	let run_args = if let Some(storage) = offchain_storage {
+	let (run_args, sync_args) = if let Some(storage) = offchain_storage {
 		let prefix = &STORAGE_PREFIX;
-		let key = RUN_ARGS_KEY;
-		storage.get(prefix, key)
+		(storage.get(prefix, RUN_ARGS_KEY), storage.get(prefix, SYNC_ARGS_KEY))
 	} else {
-		None
+		(None, None)
 	};
-	log::info!("offchain_storage:{:?}", run_args);
-
+	log::info!("offchain_storage of run_args:{:?}", run_args);
+	log::info!("offchain_storage of sync_args:{:?}", sync_args);
 	// Check if there is a download task
 	let head = validation_data.clone().parent_head.0;
 
@@ -345,7 +401,7 @@ where
 	let xx = keystore.sr25519_public_keys(sp_application_crypto::key_types::AURA)[0];
 
 	let should_load: Option<DownloadInfo> = parachain.runtime_api().shuld_load(hash, xx.into())?;
-	log::info!("should_load:{:?}", should_load);
+	log::info!("app download info of sequencer's group:{:?}", should_load);
 
 	let number = (*parachain_head.number()).into();
 	{
@@ -359,12 +415,12 @@ where
 				if old_group_id != new_group {
 					app.running = false;
 
-					app.group_id = new_group;
-
 					tokio::spawn(process_download_task(
 						data_path.clone(),
 						app_info,
 						running_app.clone(),
+						new_group,
+						sync_args,
 					));
 				}
 			},
@@ -380,7 +436,13 @@ where
 			if !app.running {
 				log::info!("run:{:?}", app);
 
-				tokio::spawn(process_run_task(data_path, app_info, run_args, running_app.clone()));
+				tokio::spawn(process_run_task(
+					data_path,
+					app_info,
+					run_args,
+					running_app.clone(),
+					StartType::RUN,
+				));
 
 				app.running = true;
 			}
@@ -436,7 +498,9 @@ async fn relay_chain_notification<P, R, Block, TBackend>(
 		group_id: 0xFFFFFFFF,
 		running: false,
 		app_info: None,
-		instance: None,
+		instance1: None,
+		instance2: None,
+		cur_ins: InstanceIndex::Instance1,
 	}));
 	loop {
 		select! {
