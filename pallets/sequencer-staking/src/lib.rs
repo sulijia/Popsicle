@@ -43,12 +43,12 @@ pub mod pallet {
 		PalletId,
 	};
 	use frame_system::pallet_prelude::*;
+	use pallet_sequencer_grouping::SequencerGroup;
 	use sp_runtime::{
 		traits::{AccountIdConversion, Saturating, Zero},
 		DispatchErrorWithPostInfo, Perbill,
 	};
 	use sp_std::{collections::btree_map::BTreeMap, prelude::*};
-	use pallet_sequencer_grouping::SequencerGroup;
 	// Round index type
 	pub type RoundIndex = u32;
 	// Reward points type
@@ -137,7 +137,10 @@ pub mod pallet {
 		/// If you don't need it, you can specify the type `()`.
 		type OnNewRound: OnNewRound;
 		// An interface to call the sequencer-group pallet
-		type SequencerGroup: pallet_sequencer_grouping::SequencerGroup<AccountIdOf<Self>, BlockNumberFor<Self>>;
+		type SequencerGroup: pallet_sequencer_grouping::SequencerGroup<
+			AccountIdOf<Self>,
+			BlockNumberFor<Self>,
+		>;
 		/// The native token reward for a round
 		#[pallet::constant]
 		type RoundReward: Get<BalanceOf<Self>>;
@@ -289,8 +292,8 @@ pub mod pallet {
 		pub sequencer_commission: Perbill,
 		/// Default number of blocks in a round
 		pub blocks_per_round: u32,
-		// /// Number of selected candidates every round. Cannot be lower than MinSelectedCandidates
-		// pub num_selected_candidates: u32,
+		// /// Number of selected candidates every round. Cannot be lower than
+		// MinSelectedCandidates pub num_selected_candidates: u32,
 	}
 
 	impl<T: Config> Default for GenesisConfig<T> {

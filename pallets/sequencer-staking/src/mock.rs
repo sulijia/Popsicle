@@ -1,8 +1,9 @@
-use std::marker::PhantomData;
 use crate as pallet_sequencer_staking;
 use crate::SEQUENCER_LOCK_ID;
 use frame_support::{
-	derive_impl, parameter_types,
+	derive_impl,
+	pallet_prelude::ConstU32,
+	parameter_types,
 	traits::{
 		fungibles::Inspect,
 		tokens::{Fortitude, Preservation},
@@ -11,7 +12,6 @@ use frame_support::{
 	weights::constants::RocksDbWeight,
 	PalletId,
 };
-use frame_support::pallet_prelude::ConstU32;
 use frame_system as system;
 use frame_system::pallet_prelude::BlockNumberFor;
 use popsicle_runtime::POPS;
@@ -20,6 +20,7 @@ use sp_runtime::{
 	traits::{BlakeTwo256, IdentityLookup},
 	BuildStorage, Perbill,
 };
+use std::marker::PhantomData;
 
 pub type AccountId = u64;
 pub type Balance = u128;
@@ -292,8 +293,8 @@ impl ExtBuilder {
 			group_number: 1,
 			_marker: PhantomData,
 		}
-			.assimilate_storage(&mut t)
-			.expect("Sequencer Grouping storage can be assimilated");
+		.assimilate_storage(&mut t)
+		.expect("Sequencer Grouping storage can be assimilated");
 
 		pallet_sequencer_staking::GenesisConfig::<Test> {
 			candidates: self.sequencers,

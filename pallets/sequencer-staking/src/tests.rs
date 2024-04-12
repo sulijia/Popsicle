@@ -4,8 +4,7 @@ use crate::{
 		roll_blocks, roll_to, roll_to_round_begin, roll_to_round_end, Balances, BlockNumber,
 		ExtBuilder, RuntimeOrigin, SequencerStaking, Test,
 	},
-	AtStake, Bond, DelegationScheduledRequests, EnableMarkingOffline, Error,
-	SequencerStatus, *,
+	AtStake, Bond, DelegationScheduledRequests, EnableMarkingOffline, Error, SequencerStatus, *,
 };
 use frame_support::{
 	assert_noop, assert_ok,
@@ -18,10 +17,8 @@ use frame_support::{
 	BoundedVec,
 };
 use mock::*;
-use sp_runtime::{
-	traits::Zero, DispatchError::Module, ModuleError, Perbill,
-};
 use pallet_sequencer_grouping::SequencerGroup;
+use sp_runtime::{traits::Zero, DispatchError::Module, ModuleError, Perbill};
 
 // ~~ ROOT ~~
 
@@ -118,7 +115,11 @@ fn set_blocks_per_round_fails_if_below_total_selected() {
 	ExtBuilder::default().build().execute_with(|| {
 		// assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 20u32));
 		// assert_ok!(SequencerStaking::set_total_selected(RuntimeOrigin::root(), 10u32));
-		assert_ok!(<Test as crate::Config>::SequencerGroup::set_group_metric(RuntimeOrigin::root(), 2u32, 5u32));
+		assert_ok!(<Test as crate::Config>::SequencerGroup::set_group_metric(
+			RuntimeOrigin::root(),
+			2u32,
+			5u32
+		));
 		assert_noop!(
 			SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 9u32),
 			Error::<Test>::RoundLengthMustBeGreaterThanTotalSelectedSequencers,
@@ -131,7 +132,11 @@ fn set_blocks_per_round_fails_if_equal_to_total_selected() {
 	ExtBuilder::default().build().execute_with(|| {
 		// assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 10u32));
 		// assert_ok!(SequencerStaking::set_total_selected(RuntimeOrigin::root(), 9u32));
-		assert_ok!(<Test as crate::Config>::SequencerGroup::set_group_metric(RuntimeOrigin::root(), 2u32, 3u32));
+		assert_ok!(<Test as crate::Config>::SequencerGroup::set_group_metric(
+			RuntimeOrigin::root(),
+			2u32,
+			3u32
+		));
 		assert_noop!(
 			SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 6u32),
 			Error::<Test>::RoundLengthMustBeGreaterThanTotalSelectedSequencers,
@@ -143,7 +148,11 @@ fn set_blocks_per_round_fails_if_equal_to_total_selected() {
 fn set_blocks_per_round_passes_if_above_total_selected() {
 	ExtBuilder::default().build().execute_with(|| {
 		assert_eq!(Round::<Test>::get().length, 5); // test relies on this
-		assert_ok!(<Test as crate::Config>::SequencerGroup::set_group_metric(RuntimeOrigin::root(), 2u32, 3u32));
+		assert_ok!(<Test as crate::Config>::SequencerGroup::set_group_metric(
+			RuntimeOrigin::root(),
+			2u32,
+			3u32
+		));
 		assert_ok!(SequencerStaking::set_blocks_per_round(RuntimeOrigin::root(), 7u32));
 	});
 }
