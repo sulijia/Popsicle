@@ -10,6 +10,7 @@ pub const MICROPOPS: Balance = MILLIPOPS / 1_000;
 
 // BTC token
 pub const ONE_BTC: Balance = 100_000_000;
+pub const MILLI_BTC: Balance = ONE_BTC / 1_000;
 
 pub const EXISTENTIAL_DEPOSIT: Balance = MILLIPOPS;
 
