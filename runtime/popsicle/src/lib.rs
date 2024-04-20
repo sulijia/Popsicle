@@ -59,7 +59,7 @@ use polkadot_runtime_common::{BlockHashCount, SlowAdjustingFeeUpdate};
 
 pub use runtime_common::{
 	deposit, AccountId, Balance, BlockNumber, DealWithFees, Hash, Signature, EXISTENTIAL_DEPOSIT,
-	MICROPOPS, POPS,
+	MICROPOPS, MILLI_BTC, POPS,
 };
 
 use weights::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
@@ -626,8 +626,8 @@ impl pallet_sequencer_staking::Config for Runtime {
 	type MaxDelegationsPerDelegator = ConstU32<100>;
 	/// Minimum native token required to be locked to be a candidate
 	type MinCandidateStk = ConstU128<{ 20_000 * POPS }>;
-	/// Minimum stake required to be reserved to be a delegator
-	type MinDelegation = ConstU128<{ 10 * POPS }>;
+	/// Minimum BTC stake required to be reserved to be a delegator(0.01 BTC)
+	type MinDelegation = ConstU128<{ 10 * MILLI_BTC }>;
 	type OnSequencerPayout = ();
 	type PayoutSequencerReward = ();
 	type OnInactiveSequencer = OnInactiveSequencer;
