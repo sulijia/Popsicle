@@ -314,7 +314,8 @@ async fn process_run_task(
 		&mut app.instance2
 	};
 	if let Some(ref mut old_instance) = old_instance {
-		let kill_result = old_instance.kill();
+		old_instance.kill()?;
+		let kill_result = old_instance.wait()?;
 		log::info!("kill old instance:{:?}", kill_result);
 	}
 	let outputs = File::create(log_file_name)?;
@@ -332,7 +333,8 @@ async fn process_run_task(
 		if app.cur_ins == InstanceIndex::Instance1 {
 			let other_instance = &mut app.instance2;
 			if let Some(ref mut other_instance) = other_instance {
-				let kill_result = other_instance.kill();
+				other_instance.kill()?;
+				let kill_result = other_instance.wait()?;
 				log::info!("kill instance2:{:?}", kill_result);
 			}
 			app.cur_ins = InstanceIndex::Instance2;
@@ -341,7 +343,8 @@ async fn process_run_task(
 		} else {
 			let other_instance = &mut app.instance1;
 			if let Some(ref mut other_instance) = other_instance {
-				let kill_result = other_instance.kill();
+				other_instance.kill()?;
+				let kill_result = other_instance.wait()?;
 				log::info!("kill instance1:{:?}", kill_result);
 			}
 			app.cur_ins = InstanceIndex::Instance1;
@@ -380,14 +383,12 @@ where
 {
 	let offchain_storage = backend.offchain_storage();
 
-	let (run_args, sync_args) = if let Some(storage) = offchain_storage {
+	let (mut run_args, mut sync_args) = if let Some(storage) = offchain_storage.clone() {
 		let prefix = &STORAGE_PREFIX;
 		(storage.get(prefix, RUN_ARGS_KEY), storage.get(prefix, SYNC_ARGS_KEY))
 	} else {
 		(None, None)
 	};
-	log::info!("offchain_storage of run_args:{:?}", run_args);
-	log::info!("offchain_storage of sync_args:{:?}", sync_args);
 	// Check if there is a download task
 	let head = validation_data.clone().parent_head.0;
 
@@ -413,6 +414,20 @@ where
 			Some(app_info) => {
 				let new_group = app_info.group;
 				if old_group_id != new_group {
+					if sync_args == None {
+						sync_args = if let Some(storage) = offchain_storage.clone() {
+							let prefix = &STORAGE_PREFIX;
+							let sync_args = format!(
+								"{}:{}",
+								std::str::from_utf8(SYNC_ARGS_KEY).unwrap(),
+								new_group
+							);
+							storage.get(prefix, sync_args.as_bytes())
+						} else {
+							None
+						};
+					}
+					log::info!("offchain_storage of sync_args:{:?}", sync_args);
 					app.running = false;
 
 					tokio::spawn(process_download_task(
@@ -435,7 +450,21 @@ where
 		if let Some(app_info) = app.app_info.clone() {
 			if !app.running {
 				log::info!("run:{:?}", app);
+				if run_args == None {
+					run_args = if let Some(storage) = offchain_storage {
+						let prefix = &STORAGE_PREFIX;
+						let run_args = format!(
+							"{}:{}",
+							std::str::from_utf8(RUN_ARGS_KEY).unwrap(),
+							app.group_id
+						);
 
+						storage.get(prefix, run_args.as_bytes())
+					} else {
+						None
+					};
+				}
+				log::info!("offchain_storage of run_args:{:?}", run_args);
 				tokio::spawn(process_run_task(
 					data_path,
 					app_info,
