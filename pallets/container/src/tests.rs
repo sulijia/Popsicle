@@ -26,6 +26,7 @@ fn register_app() {
 			RuntimeOrigin::signed(1),
 			H256::from([1; 32]),
 			BoundedVec::try_from("test".as_bytes().to_vec()).unwrap(),
+			BoundedVec::try_from("test".as_bytes().to_vec()).unwrap(),
 			123,
 			Some(BoundedVec::try_from("--chain dev".as_bytes().to_vec()).unwrap()),
 			None

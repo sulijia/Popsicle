@@ -28,6 +28,7 @@ pub use weights::*;
 pub struct APPInfo<T: Config> {
 	app_hash: Hash,
 	creator: T::AccountId,
+	project_name: BoundedVec<u8, T::MaxLengthFileName>,
 	file_name: BoundedVec<u8, T::MaxLengthFileName>,
 	uploaded: bool,
 	size: u32,
@@ -95,6 +96,7 @@ pub mod pallet {
 	pub enum Event<T: Config> {
 		ReisterApp {
 			appid: u32,
+			project_name: BoundedVec<u8, T::MaxLengthFileName>,
 			file_name: BoundedVec<u8, T::MaxLengthFileName>,
 			hash: Hash,
 			size: u32,
@@ -160,6 +162,7 @@ pub mod pallet {
 		pub fn register_app(
 			origin: OriginFor<T>,
 			app_hash: Hash,
+			project_name: BoundedVec<u8, T::MaxLengthFileName>,
 			file_name: BoundedVec<u8, T::MaxLengthFileName>,
 			size: u32,
 			args: Option<BoundedVec<u8, T::MaxArgLength>>,
@@ -174,6 +177,7 @@ pub mod pallet {
 				APPInfo {
 					app_hash,
 					creator: who,
+					project_name: project_name.clone(),
 					file_name: file_name.clone(),
 					uploaded: false,
 					size,
@@ -191,6 +195,7 @@ pub mod pallet {
 
 			Pallet::<T>::deposit_event(Event::<T>::ReisterApp {
 				appid: old_application_id,
+				project_name,
 				file_name,
 				hash: app_hash,
 				size,
