@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 
 use cumulus_client_cli::CollatorOptions;
 // Local Runtime Types
-use parachain_template_runtime::{
+use popsicle_runtime::{
 	opaque::{Block, Hash},
 	RuntimeApi,
 };
@@ -46,11 +46,11 @@ impl sc_executor::NativeExecutionDispatch for ParachainNativeExecutor {
 	);
 
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-		parachain_template_runtime::api::dispatch(method, data)
+		popsicle_runtime::api::dispatch(method, data)
 	}
 
 	fn native_version() -> sc_executor::NativeVersion {
-		parachain_template_runtime::native_version()
+		popsicle_runtime::native_version()
 	}
 }
 

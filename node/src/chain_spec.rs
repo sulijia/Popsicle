@@ -1,17 +1,22 @@
 use cumulus_primitives_core::ParaId;
-use parachain_template_runtime as runtime;
+use popsicle_runtime as runtime;
 use runtime::{AccountId, AuraId, Signature, EXISTENTIAL_DEPOSIT};
 use sc_chain_spec::{ChainSpecExtension, ChainSpecGroup};
 use sc_service::ChainType;
 use serde::{Deserialize, Serialize};
 use sp_core::{sr25519, Pair, Public};
-use sp_runtime::traits::{IdentifyAccount, Verify};
+use sp_runtime::{
+	traits::{IdentifyAccount, Verify},
+	Perbill,
+};
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
 pub type ChainSpec = sc_service::GenericChainSpec<(), Extensions>;
 
 /// The default XCM version to set in genesis config.
 const SAFE_XCM_VERSION: u32 = xcm::prelude::XCM_VERSION;
+
+const PARA_ID: u32 = 2000;
 
 /// Helper function to generate a crypto pair from seed
 pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
@@ -57,14 +62,14 @@ where
 /// Generate the session keys from individual elements.
 ///
 /// The input must be a tuple of individual keys (a single arg for now since we have just one key).
-pub fn template_session_keys(keys: AuraId) -> runtime::SessionKeys {
+pub fn popsicle_session_keys(keys: AuraId) -> runtime::SessionKeys {
 	runtime::SessionKeys { aura: keys }
 }
 
 pub fn development_config() -> ChainSpec {
 	// Give your base currency a unit name and decimal places
 	let mut properties = sc_chain_spec::Properties::new();
-	properties.insert("tokenSymbol".into(), "UNIT".into());
+	properties.insert("tokenSymbol".into(), "POPS".into());
 	properties.insert("tokenDecimals".into(), 12.into());
 	properties.insert("ss58Format".into(), 42.into());
 
@@ -73,11 +78,11 @@ pub fn development_config() -> ChainSpec {
 		Extensions {
 			relay_chain: "rococo-local".into(),
 			// You MUST set this to the correct network!
-			para_id: 1000,
+			para_id: PARA_ID,
 		},
 	)
-	.with_name("Development")
-	.with_id("dev")
+	.with_name("Popsicle Development")
+	.with_id("popsicle_dev")
 	.with_chain_type(ChainType::Development)
 	.with_genesis_config_patch(testnet_genesis(
 		// initial collators.
@@ -106,7 +111,7 @@ pub fn development_config() -> ChainSpec {
 			get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
 		],
 		get_account_id_from_seed::<sr25519::Public>("Alice"),
-		1000.into(),
+		PARA_ID.into(),
 	))
 	.build()
 }
@@ -114,7 +119,7 @@ pub fn development_config() -> ChainSpec {
 pub fn local_testnet_config() -> ChainSpec {
 	// Give your base currency a unit name and decimal places
 	let mut properties = sc_chain_spec::Properties::new();
-	properties.insert("tokenSymbol".into(), "UNIT".into());
+	properties.insert("tokenSymbol".into(), "POPS".into());
 	properties.insert("tokenDecimals".into(), 12.into());
 	properties.insert("ss58Format".into(), 42.into());
 
@@ -124,11 +129,11 @@ pub fn local_testnet_config() -> ChainSpec {
 		Extensions {
 			relay_chain: "rococo-local".into(),
 			// You MUST set this to the correct network!
-			para_id: 1000,
+			para_id: PARA_ID,
 		},
 	)
-	.with_name("Local Testnet")
-	.with_id("local_testnet")
+	.with_name("Popsicle Local Testnet")
+	.with_id("popsicle_local_testnet")
 	.with_chain_type(ChainType::Local)
 	.with_genesis_config_patch(testnet_genesis(
 		// initial collators.
@@ -157,9 +162,9 @@ pub fn local_testnet_config() -> ChainSpec {
 			get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
 		],
 		get_account_id_from_seed::<sr25519::Public>("Alice"),
-		1000.into(),
+		PARA_ID.into(),
 	))
-	.with_protocol_id("template-local")
+	.with_protocol_id("popsicle-local")
 	.with_properties(properties)
 	.build()
 }
@@ -170,6 +175,15 @@ fn testnet_genesis(
 	root: AccountId,
 	id: ParaId,
 ) -> serde_json::Value {
+	let alice: AccountId = get_from_seed::<sr25519::Public>("Alice").into();
+	let bob: AccountId = get_from_seed::<sr25519::Public>("Bob").into();
+
+	// If root key is not in endowed accounts, add it.
+	let mut endowed_accounts = endowed_accounts;
+	if !endowed_accounts.contains(&root) {
+		endowed_accounts.push(root.clone());
+	}
+
 	serde_json::json!({
 		"balances": {
 			"balances": endowed_accounts.iter().cloned().map(|k| (k, 1u64 << 60)).collect::<Vec<_>>(),
@@ -188,7 +202,7 @@ fn testnet_genesis(
 					(
 						acc.clone(),                 // account id
 						acc,                         // validator id
-						template_session_keys(aura), // session keys
+						popsicle_session_keys(aura), // session keys
 					)
 				})
 			.collect::<Vec<_>>(),
@@ -196,6 +210,24 @@ fn testnet_genesis(
 		"polkadotXcm": {
 			"safeXcmVersion": Some(SAFE_XCM_VERSION),
 		},
-		"sudo": { "key": Some(root) }
+		"sudo": { "key": Some(root) },
+		// Configure assets BTC with owner of Alice
+		"assets": {
+			"assets": vec![(0, alice.clone(), true, 100_000_000_000i64)],
+			// Genesis metadata: Vec<(id, name, symbol, decimals)>
+			"metadata": vec![(0, "Bitcoin".to_string(), "BTC".to_string(), 8)],
+			// Genesis accounts: Vec<(id, account_id, balance)>
+			"accounts": vec![
+				(0, alice.clone(), 500_000_000_000_000_000i64),
+				(0, bob.clone(), 500_000_000_000_000_000i64),
+			]
+		},
+		"sequencerStaking": {
+			"candidates": vec![alice, bob],
+			"sequencerCommission": Perbill::from_percent(5),
+			"blocksPerRound": 1440,
+			// "numSelectedCandidates": 2,
+			"delegations": Vec::<(AccountId, AccountId, u128)>::new(),
+		}
 	})
 }

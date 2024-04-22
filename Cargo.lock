@@ -946,6 +946,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba3569f383e8f1598449f1a423e72e99569137b47740b1da11ef19af3d5c3223"
+dependencies = [
+ "lazy_static",
+ "memchr",
+ "regex-automata 0.1.10",
+]
+
+[[package]]
 name = "build-helper"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6211,6 +6222,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-container"
+version = "0.1.0"
+dependencies = [
+ "cumulus-primitives-core",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-aura",
+ "pallet-sequencer-grouping",
+ "parity-scale-codec",
+ "primitives-container",
+ "scale-info",
+ "serde",
+ "sp-consensus-aura",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-conviction-voting"
 version = "31.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6596,20 +6629,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-parachain-template"
-version = "0.1.0"
-dependencies = [
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-io",
- "sp-runtime",
-]
-
-[[package]]
 name = "pallet-preimage"
 version = "31.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6732,6 +6751,46 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-weights",
+]
+
+[[package]]
+name = "pallet-sequencer-grouping"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-balances",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-sequencer-staking"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "pallet-assets",
+ "pallet-balances",
+ "pallet-sequencer-grouping",
+ "parity-scale-codec",
+ "popsicle-runtime",
+ "scale-info",
+ "serde",
+ "similar-asserts",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -7085,122 +7144,6 @@ dependencies = [
  "staging-xcm",
  "staging-xcm-builder",
  "staging-xcm-executor",
-]
-
-[[package]]
-name = "parachain-template-node"
-version = "0.1.0"
-dependencies = [
- "clap",
- "color-print",
- "cumulus-client-cli",
- "cumulus-client-collator",
- "cumulus-client-consensus-aura",
- "cumulus-client-consensus-common",
- "cumulus-client-consensus-proposer",
- "cumulus-client-service",
- "cumulus-primitives-core",
- "cumulus-primitives-parachain-inherent",
- "cumulus-relay-chain-interface",
- "frame-benchmarking",
- "frame-benchmarking-cli",
- "futures",
- "jsonrpsee",
- "log",
- "pallet-transaction-payment-rpc",
- "parachain-template-runtime",
- "parity-scale-codec",
- "polkadot-cli",
- "polkadot-primitives",
- "sc-basic-authorship",
- "sc-chain-spec",
- "sc-cli",
- "sc-client-api",
- "sc-consensus",
- "sc-executor",
- "sc-network",
- "sc-network-sync",
- "sc-offchain",
- "sc-rpc",
- "sc-service",
- "sc-sysinfo",
- "sc-telemetry",
- "sc-tracing",
- "sc-transaction-pool",
- "sc-transaction-pool-api",
- "serde",
- "serde_json",
- "sp-api",
- "sp-block-builder",
- "sp-blockchain",
- "sp-consensus-aura",
- "sp-core",
- "sp-io",
- "sp-keystore",
- "sp-runtime",
- "sp-timestamp",
- "staging-xcm",
- "substrate-build-script-utils",
- "substrate-frame-rpc-system",
- "substrate-prometheus-endpoint",
-]
-
-[[package]]
-name = "parachain-template-runtime"
-version = "0.1.0"
-dependencies = [
- "cumulus-pallet-aura-ext",
- "cumulus-pallet-parachain-system",
- "cumulus-pallet-session-benchmarking",
- "cumulus-pallet-xcm",
- "cumulus-pallet-xcmp-queue",
- "cumulus-primitives-core",
- "cumulus-primitives-storage-weight-reclaim",
- "cumulus-primitives-utility",
- "frame-benchmarking",
- "frame-executive",
- "frame-support",
- "frame-system",
- "frame-system-benchmarking",
- "frame-system-rpc-runtime-api",
- "frame-try-runtime",
- "hex-literal",
- "log",
- "pallet-aura",
- "pallet-authorship",
- "pallet-balances",
- "pallet-collator-selection",
- "pallet-message-queue",
- "pallet-parachain-template",
- "pallet-session",
- "pallet-sudo",
- "pallet-timestamp",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc-runtime-api",
- "pallet-xcm",
- "parachains-common",
- "parity-scale-codec",
- "polkadot-parachain-primitives",
- "polkadot-runtime-common",
- "scale-info",
- "smallvec",
- "sp-api",
- "sp-block-builder",
- "sp-consensus-aura",
- "sp-core",
- "sp-genesis-builder",
- "sp-inherents",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-std",
- "sp-transaction-pool",
- "sp-version",
- "staging-parachain-info",
- "staging-xcm",
- "staging-xcm-builder",
- "staging-xcm-executor",
- "substrate-wasm-builder",
 ]
 
 [[package]]
@@ -8834,6 +8777,127 @@ dependencies = [
 ]
 
 [[package]]
+name = "popsicle-node"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "color-print",
+ "cumulus-client-cli",
+ "cumulus-client-collator",
+ "cumulus-client-consensus-aura",
+ "cumulus-client-consensus-common",
+ "cumulus-client-consensus-proposer",
+ "cumulus-client-service",
+ "cumulus-primitives-core",
+ "cumulus-primitives-parachain-inherent",
+ "cumulus-relay-chain-interface",
+ "frame-benchmarking",
+ "frame-benchmarking-cli",
+ "futures",
+ "jsonrpsee",
+ "log",
+ "pallet-transaction-payment-rpc",
+ "parity-scale-codec",
+ "polkadot-cli",
+ "polkadot-primitives",
+ "popsicle-runtime",
+ "sc-basic-authorship",
+ "sc-chain-spec",
+ "sc-cli",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-executor",
+ "sc-network",
+ "sc-network-sync",
+ "sc-offchain",
+ "sc-rpc",
+ "sc-service",
+ "sc-sysinfo",
+ "sc-telemetry",
+ "sc-tracing",
+ "sc-transaction-pool",
+ "sc-transaction-pool-api",
+ "serde",
+ "serde_json",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-consensus-aura",
+ "sp-core",
+ "sp-io",
+ "sp-keystore",
+ "sp-runtime",
+ "sp-timestamp",
+ "staging-xcm",
+ "substrate-build-script-utils",
+ "substrate-frame-rpc-system",
+ "substrate-prometheus-endpoint",
+]
+
+[[package]]
+name = "popsicle-runtime"
+version = "0.1.0"
+dependencies = [
+ "cumulus-pallet-aura-ext",
+ "cumulus-pallet-parachain-system",
+ "cumulus-pallet-session-benchmarking",
+ "cumulus-pallet-xcm",
+ "cumulus-pallet-xcmp-queue",
+ "cumulus-primitives-core",
+ "cumulus-primitives-storage-weight-reclaim",
+ "cumulus-primitives-utility",
+ "frame-benchmarking",
+ "frame-executive",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "frame-try-runtime",
+ "hex-literal",
+ "log",
+ "pallet-assets",
+ "pallet-aura",
+ "pallet-authorship",
+ "pallet-balances",
+ "pallet-collator-selection",
+ "pallet-container",
+ "pallet-message-queue",
+ "pallet-sequencer-grouping",
+ "pallet-sequencer-staking",
+ "pallet-session",
+ "pallet-sudo",
+ "pallet-timestamp",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "pallet-utility",
+ "pallet-xcm",
+ "parachains-common",
+ "parity-scale-codec",
+ "polkadot-parachain-primitives",
+ "polkadot-runtime-common",
+ "primitives-container",
+ "scale-info",
+ "smallvec",
+ "sp-api",
+ "sp-block-builder",
+ "sp-consensus-aura",
+ "sp-core",
+ "sp-genesis-builder",
+ "sp-inherents",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "staging-parachain-info",
+ "staging-xcm",
+ "staging-xcm-builder",
+ "staging-xcm-executor",
+ "substrate-wasm-builder",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8922,6 +8986,18 @@ dependencies = [
  "impl-serde",
  "scale-info",
  "uint",
+]
+
+[[package]]
+name = "primitives-container"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -11510,6 +11586,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "similar"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa42c91313f1d05da9b26f267f931cf178d4aba455b4c4622dd7355eb80c6640"
+dependencies = [
+ "bstr",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "similar-asserts"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e041bb827d1bfca18f213411d51b665309f1afb37a04a5d1464530e13779fc0f"
+dependencies = [
+ "console",
+ "similar",
+]
+
+[[package]]
 name = "simple-mermaid"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13642,6 +13738,12 @@ checksum = "5c5713f0fc4b5db668a2ac63cdb7bb4469d8c9fed047b1d0292cc7b0ce2ba921"
 dependencies = [
  "tinyvec",
 ]
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4c87d22b6e3f4a18d4d40ef354e97c90fcb14dd91d7dc0aa9d8a1172ebf7202"
 
 [[package]]
 name = "unicode-width"

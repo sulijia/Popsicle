@@ -6,10 +6,14 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+pub mod blocks;
+pub mod currency;
 mod weights;
 pub mod xcm_config;
 
 use cumulus_pallet_parachain_system::RelayNumberStrictlyIncreases;
+use frame_support::traits::AsEnsureOriginWithArg;
+use frame_system::EnsureSigned;
 use polkadot_runtime_common::xcm_sender::NoPriceForMessageDelivery;
 use smallvec::smallvec;
 use sp_api::impl_runtime_apis;
@@ -29,13 +33,14 @@ use sp_version::RuntimeVersion;
 use cumulus_primitives_core::{AggregateMessageOrigin, ParaId};
 use frame_support::{
 	construct_runtime, derive_impl,
-	dispatch::DispatchClass,
+	dispatch::{DispatchClass, PostDispatchInfo},
 	genesis_builder_helper::{build_config, create_default_config},
 	parameter_types,
+	sp_runtime::AccountId32,
 	traits::{ConstBool, ConstU32, ConstU64, ConstU8, EitherOfDiverse, TransformOrigin},
 	weights::{
-		constants::WEIGHT_REF_TIME_PER_SECOND, ConstantMultiplier, Weight, WeightToFeeCoefficient,
-		WeightToFeeCoefficients, WeightToFeePolynomial,
+		ConstantMultiplier, Weight, WeightToFeeCoefficient, WeightToFeeCoefficients,
+		WeightToFeePolynomial,
 	},
 	PalletId,
 };
@@ -43,11 +48,26 @@ use frame_system::{
 	limits::{BlockLength, BlockWeights},
 	EnsureRoot,
 };
+pub use pallet_container;
+use pallet_sequencer_grouping::SimpleRandomness;
+use pallet_sequencer_staking::WeightInfo;
 use pallet_xcm::{EnsureXcm, IsVoiceOfBody};
 use parachains_common::message_queue::{NarrowOriginToSibling, ParaIdToSibling};
+use primitives_container::DownloadInfo;
 pub use sp_consensus_aura::sr25519::AuthorityId as AuraId;
+use sp_core::ConstU128;
+use sp_runtime::DispatchErrorWithPostInfo;
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use xcm_config::{RelayLocation, XcmOriginToTransactDispatchOrigin};
+
+pub use crate::{
+	blocks::{
+		AVERAGE_ON_INITIALIZE_RATIO, BLOCK_PROCESSING_VELOCITY, HOURS, MAXIMUM_BLOCK_WEIGHT,
+		NORMAL_DISPATCH_RATIO, RELAY_CHAIN_SLOT_DURATION_MILLIS, SLOT_DURATION,
+		UNINCLUDED_SEGMENT_CAPACITY,
+	},
+	currency::{deposit, EXISTENTIAL_DEPOSIT, MICROPOPS, MILLIPOPS, MILLI_BTC, POPS},
+};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -59,9 +79,6 @@ use weights::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
 
 // XCM Imports
 use xcm::latest::prelude::BodyId;
-
-/// Import the template pallet.
-pub use pallet_parachain_template;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -137,9 +154,9 @@ pub struct WeightToFee;
 impl WeightToFeePolynomial for WeightToFee {
 	type Balance = Balance;
 	fn polynomial() -> WeightToFeeCoefficients<Self::Balance> {
-		// in Rococo, extrinsic base weight (smallest non-zero weight) is mapped to 1 MILLIUNIT:
-		// in our template, we map to 1/10 of that, or 1/10 MILLIUNIT
-		let p = MILLIUNIT / 10;
+		// in Rococo, extrinsic base weight (smallest non-zero weight) is mapped to 1 MILLIPOPS:
+		// in our runtime, we map to 1/10 of that, or 1/10 MILLIPOPS
+		let p = MILLIPOPS / 10;
 		let q = 100 * Balance::from(ExtrinsicBaseWeight::get().ref_time());
 		smallvec![WeightToFeeCoefficient {
 			degree: 1,
@@ -180,8 +197,8 @@ impl_opaque_keys! {
 
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: create_runtime_str!("parachain-template-runtime"),
-	impl_name: create_runtime_str!("parachain-template-runtime"),
+	spec_name: create_runtime_str!("popsicle"),
+	impl_name: create_runtime_str!("popsicle"),
 	authoring_version: 1,
 	spec_version: 1,
 	impl_version: 0,
@@ -189,54 +206,6 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 	transaction_version: 1,
 	state_version: 1,
 };
-
-/// This determines the average expected block time that we are targeting.
-/// Blocks will be produced at a minimum duration defined by `SLOT_DURATION`.
-/// `SLOT_DURATION` is picked up by `pallet_timestamp` which is in turn picked
-/// up by `pallet_aura` to implement `fn slot_duration()`.
-///
-/// Change this to adjust the block time.
-pub const MILLISECS_PER_BLOCK: u64 = 12000;
-
-// NOTE: Currently it is not possible to change the slot duration after the chain has started.
-//       Attempting to do so will brick block production.
-pub const SLOT_DURATION: u64 = MILLISECS_PER_BLOCK;
-
-// Time is measured by number of blocks.
-pub const MINUTES: BlockNumber = 60_000 / (MILLISECS_PER_BLOCK as BlockNumber);
-pub const HOURS: BlockNumber = MINUTES * 60;
-pub const DAYS: BlockNumber = HOURS * 24;
-
-// Unit = the base number of indivisible units for balances
-pub const UNIT: Balance = 1_000_000_000_000;
-pub const MILLIUNIT: Balance = 1_000_000_000;
-pub const MICROUNIT: Balance = 1_000_000;
-
-/// The existential deposit. Set to 1/10 of the Connected Relay Chain.
-pub const EXISTENTIAL_DEPOSIT: Balance = MILLIUNIT;
-
-/// We assume that ~5% of the block weight is consumed by `on_initialize` handlers. This is
-/// used to limit the maximal weight of a single extrinsic.
-const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
-
-/// We allow `Normal` extrinsics to fill up the block up to 75%, the rest can be used by
-/// `Operational` extrinsics.
-const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
-
-/// We allow for 0.5 of a second of compute with a 12 second average block time.
-const MAXIMUM_BLOCK_WEIGHT: Weight = Weight::from_parts(
-	WEIGHT_REF_TIME_PER_SECOND.saturating_div(2),
-	cumulus_primitives_core::relay_chain::MAX_POV_SIZE as u64,
-);
-
-/// Maximum number of blocks simultaneously accepted by the Runtime, not yet included
-/// into the relay chain.
-const UNINCLUDED_SEGMENT_CAPACITY: u32 = 1;
-/// How many parachain blocks are processed by the relay chain per parent. Limits the
-/// number of blocks authored per slot.
-const BLOCK_PROCESSING_VELOCITY: u32 = 1;
-/// Relay chain slot duration, in milliseconds.
-const RELAY_CHAIN_SLOT_DURATION_MILLIS: u32 = 6000;
 
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
@@ -342,8 +311,40 @@ impl pallet_balances::Config for Runtime {
 }
 
 parameter_types! {
+	pub const AssetDeposit: Balance = 10 * POPS;
+	pub const AssetAccountDeposit: Balance = deposit(1, 16);
+	pub const ApprovalDeposit: Balance = EXISTENTIAL_DEPOSIT;
+	pub const StringLimit: u32 = 50;
+	pub const MetadataDepositBase: Balance = deposit(1, 68);
+	pub const MetadataDepositPerByte: Balance = deposit(0, 1);
+}
+
+impl pallet_assets::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type Balance = Balance;
+	type RemoveItemsLimit = ConstU32<1000>;
+	type AssetId = u32;
+	type AssetIdParameter = codec::Compact<u32>;
+	type Currency = Balances;
+	type CreateOrigin = AsEnsureOriginWithArg<EnsureSigned<AccountId>>;
+	type ForceOrigin = EnsureRoot<AccountId>;
+	type AssetDeposit = AssetDeposit;
+	type AssetAccountDeposit = AssetAccountDeposit;
+	type MetadataDepositBase = MetadataDepositBase;
+	type MetadataDepositPerByte = MetadataDepositPerByte;
+	type ApprovalDeposit = ApprovalDeposit;
+	type StringLimit = StringLimit;
+	type Freezer = ();
+	type Extra = ();
+	type CallbackHandle = ();
+	type WeightInfo = pallet_assets::weights::SubstrateWeight<Runtime>;
+	#[cfg(feature = "runtime-benchmarks")]
+	type BenchmarkHelper = ();
+}
+
+parameter_types! {
 	/// Relay Chain `TransactionByteFee` / 10
-	pub const TransactionByteFee: Balance = 10 * MICROUNIT;
+	pub const TransactionByteFee: Balance = 10 * MICROPOPS;
 }
 
 impl pallet_transaction_payment::Config for Runtime {
@@ -486,10 +487,114 @@ impl pallet_collator_selection::Config for Runtime {
 	type WeightInfo = ();
 }
 
-/// Configure the pallet template in pallets/template.
-impl pallet_parachain_template::Config for Runtime {
+impl pallet_utility::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
-	type WeightInfo = pallet_parachain_template::weights::SubstrateWeight<Runtime>;
+	type RuntimeCall = RuntimeCall;
+	type PalletsOrigin = OriginCaller;
+
+	type WeightInfo = pallet_utility::weights::SubstrateWeight<Runtime>;
+}
+
+// Start of Popsicle pallets
+
+pub const MAX_SEQUENCERS: u32 = 1000;
+parameter_types! {
+	pub const PalletAccount: PalletId = PalletId(*b"seqcrstk");
+	pub const BTC: u32 = 0;
+	pub const MaxSequencerCandidates: u32 = MAX_SEQUENCERS;
+}
+
+pub struct OnInactiveSequencer;
+impl pallet_sequencer_staking::OnInactiveSequencer<Runtime> for OnInactiveSequencer {
+	fn on_inactive_sequencer(
+		collator_id: AccountId,
+		_round: pallet_sequencer_staking::RoundIndex,
+	) -> Result<Weight, DispatchErrorWithPostInfo<PostDispatchInfo>> {
+		SequencerStaking::go_offline_inner(collator_id)?;
+		let extra_weight =
+			<Runtime as pallet_sequencer_staking::Config>::WeightInfo::go_offline(MAX_SEQUENCERS);
+
+		Ok(<Runtime as frame_system::Config>::DbWeight::get()
+			.reads(1)
+			.saturating_add(extra_weight))
+	}
+}
+
+impl pallet_sequencer_staking::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	/// Interface to call Balances pallet
+	type Currency = Balances;
+	/// Interface to call the Assets pallet
+	type Assets = Assets;
+	/// Minimum round length is 1 day (60 * 60 * 24 / 6 second block times)
+	type MinBlocksPerRound = ConstU32<1440>;
+	/// If a sequencer doesn't get points on this number of rounds, it is notified as inactive
+	type MaxOfflineRounds = ConstU32<5>;
+	/// Rounds before the sequencer leaving the candidates request can be executed
+	type LeaveCandidatesDelay = ConstU32<3>;
+	/// Rounds before the candidate bond increase/decrease can be executed
+	type CandidateBondLessDelay = ConstU32<3>;
+	/// Rounds before the delegator exit can be executed
+	type LeaveDelegatorsDelay = ConstU32<3>;
+	/// Rounds before the delegator revocation can be executed
+	type RevokeDelegationDelay = ConstU32<3>;
+	/// Rounds before the delegator bond increase/decrease can be executed
+	type DelegationBondLessDelay = ConstU32<3>;
+	/// Rounds before the reward is paid,
+	type RewardPaymentDelay = ConstU32<2>;
+	// /// Minimum sequencers selected per round, default at genesis and minimum forever after
+	// type MinSelectedCandidates = ConstU32<2>;
+	/// Maximum top delegations per candidate
+	type MaxTopDelegationsPerCandidate = ConstU32<300>;
+	/// Maximum bottom delegations per candidate
+	type MaxBottomDelegationsPerCandidate = ConstU32<50>;
+	/// Maximum delegations per delegator
+	type MaxDelegationsPerDelegator = ConstU32<100>;
+	/// Minimum native token required to be locked to be a candidate
+	type MinCandidateStk = ConstU128<{ 20_000 * POPS }>;
+	/// Minimum BTC stake required to be reserved to be a delegator(0.01 BTC)
+	type MinDelegation = ConstU128<{ 10 * MILLI_BTC }>;
+	type OnSequencerPayout = ();
+	type PayoutSequencerReward = ();
+	type OnInactiveSequencer = OnInactiveSequencer;
+	type OnNewRound = ();
+	/// Interface to call the SequencerGroup pallet
+	type SequencerGroup = SequencerGroupingPallet;
+	/// total rewardable native token per round
+	type RoundReward = ConstU128<{ 1 * POPS }>;
+	/// Account pallet id to manage rewarding native token and staked BTC
+	type PalletAccount = PalletAccount;
+	/// Maximum number of candidates
+	type MaxCandidates = MaxSequencerCandidates;
+	/// BTC asset id
+	type BTC = BTC;
+	type WeightInfo = ();
+}
+
+impl pallet_sequencer_grouping::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type WeightInfo = pallet_sequencer_grouping::weights::SubstrateWeight<Runtime>;
+	type MaxGroupSize = ConstU32<100>;
+	type MaxGroupNumber = ConstU32<100>;
+	type Randomness = SimpleRandomness<Self>;
+}
+
+parameter_types! {
+	pub const MaxLengthFileName: u32 = 256;
+	pub const MaxRuningAPP: u32 = 100;
+	pub const MaxUrlLength: u32 = 300;
+	pub const MaxArgCount: u32 = 10;
+	pub const MaxArgLength: u32 = 100;
+}
+
+impl pallet_container::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type WeightInfo = pallet_container::weights::SubstrateWeight<Runtime>;
+	type MaxLengthFileName = MaxLengthFileName;
+	type MaxRuningAPP = MaxRuningAPP;
+	type MaxUrlLength = MaxUrlLength;
+	type MaxArgCount = MaxArgCount;
+	type MaxArgLength = MaxArgLength;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -501,9 +606,13 @@ construct_runtime!(
 		Timestamp: pallet_timestamp = 2,
 		ParachainInfo: parachain_info = 3,
 
+		// Utility
+		Utility: pallet_utility = 4,
+
 		// Monetary stuff.
 		Balances: pallet_balances = 10,
 		TransactionPayment: pallet_transaction_payment = 11,
+		Assets: pallet_assets = 12,
 
 		// Governance
 		Sudo: pallet_sudo = 15,
@@ -521,8 +630,10 @@ construct_runtime!(
 		CumulusXcm: cumulus_pallet_xcm = 32,
 		MessageQueue: pallet_message_queue = 33,
 
-		// Template
-		TemplatePallet: pallet_parachain_template = 50,
+		// Popsicle pallets.
+		SequencerStaking: pallet_sequencer_staking = 40,
+		SequencerGroupingPallet: pallet_sequencer_grouping = 41,
+		ContainerPallet:pallet_container = 51,
 	}
 );
 
@@ -531,6 +642,7 @@ mod benches {
 	frame_benchmarking::define_benchmarks!(
 		[frame_system, SystemBench::<Runtime>]
 		[pallet_balances, Balances]
+		[pallet_assets, Assets]
 		[pallet_session, SessionBench::<Runtime>]
 		[pallet_timestamp, Timestamp]
 		[pallet_message_queue, MessageQueue]
@@ -538,6 +650,8 @@ mod benches {
 		[pallet_collator_selection, CollatorSelection]
 		[cumulus_pallet_parachain_system, ParachainSystem]
 		[cumulus_pallet_xcmp_queue, XcmpQueue]
+		[pallet_container, ContainerPallet]
+		[pallet_sequencer_grouping, SequencerGroupingPallet]
 	);
 }
 
@@ -676,6 +790,24 @@ impl_runtime_apis! {
 		}
 		fn query_length_to_fee(length: u32) -> Balance {
 			TransactionPayment::length_to_fee(length)
+		}
+	}
+
+	impl primitives_container::ContainerRuntimeApi<Block, AccountId32> for Runtime {
+
+		fn shuld_load(author:AccountId32)->Option<DownloadInfo> {
+			ContainerPallet::shuld_load(author)
+		}
+
+		fn get_group_id(author:AccountId32) -> u32 {
+			ContainerPallet::get_group_id(author)
+		}
+
+		fn get_groups()->Vec<u32> {
+			ContainerPallet::get_groups()
+		}
+		fn should_run()-> bool {
+			ContainerPallet::should_run()
 		}
 	}
 
