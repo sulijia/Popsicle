@@ -113,6 +113,7 @@ pub fn development_config() -> ChainSpec {
 		get_account_id_from_seed::<sr25519::Public>("Alice"),
 		PARA_ID.into(),
 	))
+	.with_properties(properties)
 	.build()
 }
 
