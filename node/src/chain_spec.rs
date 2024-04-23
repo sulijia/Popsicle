@@ -215,7 +215,7 @@ fn testnet_genesis(
 		"assets": {
 			"assets": vec![(0, alice.clone(), true, 100_000_000_000i64)],
 			// Genesis metadata: Vec<(id, name, symbol, decimals)>
-			"metadata": vec![(0, "Bitcoin".to_string(), "BTC".to_string(), 8)],
+			"metadata": vec![(0, "Bitcoin".as_bytes().to_vec(), "BTC".as_bytes().to_vec(), 8)],
 			// Genesis accounts: Vec<(id, account_id, balance)>
 			"accounts": vec![
 				(0, alice.clone(), 500_000_000_000_000_000i64),
