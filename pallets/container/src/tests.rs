@@ -1,5 +1,5 @@
-use crate::{mock::*, Error};
-use frame_support::{assert_noop, assert_ok};
+use crate::mock::*;
+use frame_support::assert_ok;
 use sp_core::H256;
 use sp_runtime::BoundedVec;
 
@@ -25,6 +25,7 @@ fn register_app() {
 		assert_ok!(ContainerModule::register_app(
 			RuntimeOrigin::signed(1),
 			H256::from([1; 32]),
+			BoundedVec::try_from("test".as_bytes().to_vec()).unwrap(),
 			BoundedVec::try_from("test".as_bytes().to_vec()).unwrap(),
 			123,
 			Some(BoundedVec::try_from("--chain dev".as_bytes().to_vec()).unwrap()),

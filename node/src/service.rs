@@ -22,7 +22,9 @@ use cumulus_primitives_core::{relay_chain::CollatorPair, ParaId};
 use cumulus_relay_chain_interface::{OverseerHandle, RelayChainInterface};
 
 // Substrate Imports
+use crate::container_task::spawn_container_task;
 use frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE;
+use primitives_container::ContainerRuntimeApi;
 use sc_client_api::Backend;
 use sc_consensus::ImportQueue;
 use sc_executor::{
@@ -33,9 +35,12 @@ use sc_network_sync::SyncingService;
 use sc_service::{Configuration, PartialComponents, TFullBackend, TFullClient, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryHandle, TelemetryWorker, TelemetryWorkerHandle};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
+use sp_core::Pair;
 use sp_keystore::KeystorePtr;
+use sp_runtime::{app_crypto::AppCrypto, traits::BlakeTwo256};
 use substrate_prometheus_endpoint::Registry;
 
+use sp_runtime::AccountId32;
 /// Native executor type.
 pub struct ParachainNativeExecutor;
 
@@ -168,7 +173,7 @@ async fn start_node_impl(
 	let client = params.client.clone();
 	let backend = params.backend.clone();
 	let mut task_manager = params.task_manager;
-
+	let data_path = parachain_config.data_path.clone();
 	let (relay_chain_interface, collator_key) = build_relay_chain_interface(
 		polkadot_config,
 		&parachain_config,
@@ -244,7 +249,7 @@ async fn start_node_impl(
 		task_manager: &mut task_manager,
 		config: parachain_config,
 		keystore: params.keystore_container.keystore(),
-		backend,
+		backend: backend.clone(),
 		network: network.clone(),
 		sync_service: sync_service.clone(),
 		system_rpc_tx,
@@ -321,6 +326,15 @@ async fn start_node_impl(
 			collator_key.expect("Command line arguments do not allow this. qed"),
 			overseer_handle,
 			announce_block,
+		)?;
+		spawn_container_task(
+			client.clone(),
+			para_id,
+			relay_chain_interface.clone(),
+			&task_manager,
+			params.keystore_container.keystore(),
+			data_path,
+			backend,
 		)?;
 	}
 
