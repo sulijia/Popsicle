@@ -12,6 +12,8 @@ pub struct DownloadInfo {
 	pub url: Vec<u8>,
 	pub args: Option<Vec<u8>>,
 	pub log: Option<Vec<u8>>,
+	pub is_docker_image: bool,
+	pub docker_image: Option<Vec<u8>>,
 }
 
 sp_api::decl_runtime_apis! {

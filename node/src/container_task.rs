@@ -172,6 +172,64 @@ async fn need_download(
 	}
 }
 
+async fn check_docker_image_exist(
+	docker_image: &str,
+) -> Result<bool, Box<dyn Error + Send + Sync>> {
+	let ls_cmd = format!("image ls {}", docker_image);
+	let args: Vec<&str> = ls_cmd.split(' ').into_iter().map(|arg| arg).collect();
+	let mut instance = Command::new("docker").stdout(Stdio::piped()).args(args).spawn()?;
+	let mut result = false;
+	if let Some(ls_output) = instance.stdout.take() {
+		let grep_cmd = Command::new("grep")
+			.arg(docker_image)
+			.stdin(ls_output)
+			.stdout(Stdio::piped())
+			.spawn()?;
+
+		let grep_stdout = grep_cmd.wait_with_output()?;
+		instance.wait()?;
+		let grep_out = String::from_utf8(grep_stdout.stdout)?;
+		if grep_out.len() > 0 {
+			result = true;
+		}
+	}
+	Ok(result)
+}
+
+async fn download_docker_image(docker_image: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+	let pull_cmd = format!("pull {}", docker_image);
+	let args: Vec<&str> = pull_cmd.split(' ').into_iter().map(|arg| arg).collect();
+	let mut instance = Command::new("docker").args(args).spawn()?;
+	instance.wait()?;
+	Ok(())
+}
+
+async fn remove_docker_container(container_name: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+	let mut docker_cmd = format!("container stop {}", container_name);
+	let mut args: Vec<&str> = docker_cmd.split(' ').into_iter().map(|arg| arg).collect();
+	let mut instance = Command::new("docker").args(args).spawn()?;
+	instance.wait()?;
+
+	docker_cmd = format!("container remove {}", container_name);
+	args = docker_cmd.split(' ').into_iter().map(|arg| arg).collect();
+	instance = Command::new("docker").args(args).spawn()?;
+	instance.wait()?;
+	Ok(())
+}
+
+async fn start_docker_container(
+	container_name: &str,
+	docker_image: &str,
+	in_args: Vec<&str>,
+	log_file: File,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+	let docker_cmd = format!("run -itd --name {} {}", container_name, docker_image);
+	let mut args: Vec<&str> = docker_cmd.split(' ').into_iter().map(|arg| arg).collect();
+	args.extend(in_args);
+	let mut instance = Command::new("docker").args(args).stdout(Stdio::from(log_file)).spawn()?;
+	instance.wait()?;
+	Ok(())
+}
 #[derive(Debug, PartialEq, Eq)]
 enum StartType {
 	SYNC,
@@ -190,6 +248,8 @@ struct RunningApp {
 	app_info: Option<DownloadInfo>,
 	instance1: Option<Child>,
 	instance2: Option<Child>,
+	instance1_docker: bool,
+	instance2_docker: bool,
 	cur_ins: InstanceIndex,
 }
 
@@ -200,33 +260,52 @@ async fn process_download_task(
 	new_group: u32,
 	sync_args: Option<Vec<u8>>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-	let url = std::str::from_utf8(&app_info.url)?;
-
+	let run_as_docker = app_info.is_docker_image;
 	let mut start_flag = false;
 
-	let download_path = format!(
-		"{}/sdk/{}",
-		data_path.as_os_str().to_str().ok_or("invalid data_path")?,
-		std::str::from_utf8(&app_info.file_name)?
-	);
-
-	let need_download = need_download(&download_path, app_info.app_hash).await;
-	log::info!("need_download:{:?}", need_download);
-
-	if let Ok(need_down) = need_download {
-		if need_down {
-			let result = download_sdk(data_path.clone(), app_info.clone(), url).await;
-
-			if result.is_ok() {
-				start_flag = true;
-			} else {
-				log::info!("download sdk error:{:?}", result);
+	if run_as_docker {
+		log::info!("===========Download app from docker hub and run the application as a container=========");
+		if let Some(image) = app_info.clone().docker_image {
+			let docker_image = std::str::from_utf8(&image)?;
+			let mut exist_docker_image = check_docker_image_exist(docker_image).await?;
+			if !exist_docker_image {
+				download_docker_image(docker_image).await?;
+				exist_docker_image = check_docker_image_exist(docker_image).await?;
 			}
-		} else {
-			start_flag = true;
+			if exist_docker_image {
+				//Start docker container
+				start_flag = true;
+			}
+		}
+	} else {
+		log::info!(
+			"===========Download app from the web and run the application as a process========="
+		);
+		let url = std::str::from_utf8(&app_info.url)?;
+
+		let download_path = format!(
+			"{}/sdk/{}",
+			data_path.as_os_str().to_str().ok_or("invalid data_path")?,
+			std::str::from_utf8(&app_info.file_name)?
+		);
+
+		let need_download = need_download(&download_path, app_info.app_hash).await;
+		log::info!("need_download:{:?}", need_download);
+
+		if let Ok(need_down) = need_download {
+			if need_down {
+				let result = download_sdk(data_path.clone(), app_info.clone(), url).await;
+
+				if result.is_ok() {
+					start_flag = true;
+				} else {
+					log::info!("download sdk error:{:?}", result);
+				}
+			} else {
+				start_flag = true;
+			}
 		}
 	}
-
 	if start_flag {
 		log::info!("===============start app for sync=================");
 		let result = process_run_task(
@@ -252,11 +331,7 @@ async fn process_run_task(
 	running_app: Arc<Mutex<RunningApp>>,
 	start_type: StartType,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-	let download_path = format!(
-		"{}/sdk/{}",
-		data_path.as_os_str().to_str().unwrap(),
-		std::str::from_utf8(&app_info.file_name)?
-	);
+	let run_as_docker = app_info.is_docker_image;
 
 	let extension_args_clone;
 
@@ -306,56 +381,109 @@ async fn process_run_task(
 
 	log::info!("log_file_name:{:?}", log_file_name);
 	log::info!("args:{:?}", args);
-
-	let mut app = running_app.lock().await;
-	let old_instance = if app.cur_ins == InstanceIndex::Instance1 {
-		&mut app.instance1
-	} else {
-		&mut app.instance2
-	};
-	if let Some(ref mut old_instance) = old_instance {
-		old_instance.kill()?;
-		let kill_result = old_instance.wait()?;
-		log::info!("kill old instance:{:?}", kill_result);
-	}
 	let outputs = File::create(log_file_name)?;
 
 	let errors = outputs.try_clone()?;
 
-	let instance = Command::new(download_path)
-		.stdin(Stdio::piped())
-		.stderr(Stdio::from(outputs))
-		.stdout(Stdio::from(errors))
-		.args(args)
-		.spawn()
-		.expect("failed to execute process");
+	let mut app = running_app.lock().await;
+
+	let (old_instance, instance_docker) = if app.cur_ins == InstanceIndex::Instance1 {
+		let is_docker_instance = app.instance1_docker;
+		(&mut app.instance1, is_docker_instance)
+	} else {
+		let is_docker_instance = app.instance2_docker;
+		(&mut app.instance2, is_docker_instance)
+	};
+	// stop old instance
+	if instance_docker {
+		//reomve docker container
+		let kill_result = remove_docker_container(std::str::from_utf8(&app_info.file_name)?).await;
+		log::info!("kill old instance:{:?}", kill_result);
+	} else {
+		if let Some(ref mut old_instance) = old_instance {
+			old_instance.kill()?;
+			let kill_result = old_instance.wait()?;
+			log::info!("kill old instance:{:?}", kill_result);
+		}
+	}
+	// start new instance
+	let mut instance: Option<Child> = None;
+	if run_as_docker {
+		let image_name = app_info.docker_image.ok_or("docker image not exist")?;
+		let docker_image = std::str::from_utf8(&image_name)?;
+		let start_result = start_docker_container(
+			std::str::from_utf8(&app_info.file_name)?,
+			docker_image,
+			args,
+			outputs.try_clone()?,
+		)
+		.await;
+		log::info!("start docker container :{:?}", start_result);
+	} else {
+		let download_path = format!(
+			"{}/sdk/{}",
+			data_path.as_os_str().to_str().unwrap(),
+			std::str::from_utf8(&app_info.file_name)?
+		);
+		instance = Some(
+			Command::new(download_path)
+				.stdin(Stdio::piped())
+				.stderr(Stdio::from(outputs))
+				.stdout(Stdio::from(errors))
+				.args(args)
+				.spawn()
+				.expect("failed to execute process"),
+		);
+	}
 	if start_type == StartType::RUN {
 		if app.cur_ins == InstanceIndex::Instance1 {
-			let other_instance = &mut app.instance2;
-			if let Some(ref mut other_instance) = other_instance {
-				other_instance.kill()?;
-				let kill_result = other_instance.wait()?;
+			if app.instance2_docker {
+				let kill_result =
+					remove_docker_container(std::str::from_utf8(&app_info.file_name)?).await;
 				log::info!("kill instance2:{:?}", kill_result);
+			} else {
+				let other_instance = &mut app.instance2;
+				if let Some(ref mut other_instance) = other_instance {
+					other_instance.kill()?;
+					let kill_result = other_instance.wait()?;
+					log::info!("kill instance2:{:?}", kill_result);
+				}
 			}
 			app.cur_ins = InstanceIndex::Instance2;
-			app.instance1 = Some(instance);
+			app.instance1 = instance;
 			app.instance2 = None;
 		} else {
-			let other_instance = &mut app.instance1;
-			if let Some(ref mut other_instance) = other_instance {
-				other_instance.kill()?;
-				let kill_result = other_instance.wait()?;
-				log::info!("kill instance1:{:?}", kill_result);
+			if app.instance1_docker {
+				let kill_result =
+					remove_docker_container(std::str::from_utf8(&app_info.file_name)?).await;
+				log::info!("kill instance2:{:?}", kill_result);
+			} else {
+				let other_instance = &mut app.instance1;
+				if let Some(ref mut other_instance) = other_instance {
+					other_instance.kill()?;
+					let kill_result = other_instance.wait()?;
+					log::info!("kill instance1:{:?}", kill_result);
+				}
 			}
 			app.cur_ins = InstanceIndex::Instance1;
-			app.instance2 = Some(instance);
+			app.instance2 = instance;
 			app.instance1 = None;
 		}
 	} else {
 		if app.cur_ins == InstanceIndex::Instance1 {
-			app.instance1 = Some(instance);
+			app.instance1 = instance;
+			if run_as_docker {
+				app.instance1_docker = true;
+			} else {
+				app.instance1_docker = false;
+			}
 		} else {
-			app.instance2 = Some(instance);
+			app.instance2 = instance;
+			if run_as_docker {
+				app.instance2_docker = true;
+			} else {
+				app.instance2_docker = false;
+			}
 		}
 	}
 	log::info!("app:{:?}", app);
@@ -529,6 +657,8 @@ async fn relay_chain_notification<P, R, Block, TBackend>(
 		app_info: None,
 		instance1: None,
 		instance2: None,
+		instance1_docker: false,
+		instance2_docker: false,
 		cur_ins: InstanceIndex::Instance1,
 	}));
 	loop {
