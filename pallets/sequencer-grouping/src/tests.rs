@@ -108,9 +108,9 @@ fn account_in_group_works() {
 		assert_eq!(SequencerGrouping::account_in_group(1), Ok(0));
 		assert_eq!(SequencerGrouping::account_in_group(2), Ok(2));
 		assert_eq!(SequencerGrouping::account_in_group(3), Ok(2));
-		assert_eq!(SequencerGrouping::account_in_group(4), Ok(0));
+		assert_eq!(SequencerGrouping::account_in_group(4), Ok(1));
 		assert_eq!(SequencerGrouping::account_in_group(5), Ok(1));
-		assert_eq!(SequencerGrouping::account_in_group(6), Ok(1));
+		assert_eq!(SequencerGrouping::account_in_group(6), Ok(0));
 	});
 }
 

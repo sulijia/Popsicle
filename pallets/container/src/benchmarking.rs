@@ -20,12 +20,14 @@ benchmarks! {
 
 	register_app {
 		let hash = H256::from([1; 32]);
+		let project_name = BoundedVec::try_from("test".as_bytes().to_vec()).unwrap();
 		let file_name = BoundedVec::try_from("test".as_bytes().to_vec()).unwrap();
 		let file_size = 123;
-		let args = BoundedVec::try_from("--chain dev".as_bytes().to_vec()).unwrap();
+		let args = Some(BoundedVec::try_from("--chain dev".as_bytes().to_vec()).unwrap());
 		let log = Some(BoundedVec::try_from("aaaa".as_bytes().to_vec()).unwrap());
 		let caller: T::AccountId = whitelisted_caller();
 	}: _(RawOrigin::Signed(caller),             hash,
+	project_name,
 	file_name,
 	file_size,
 	args,

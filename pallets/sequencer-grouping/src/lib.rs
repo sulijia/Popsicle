@@ -182,9 +182,9 @@ pub mod pallet {
 		pub fn shuffle_accounts(mut accounts: Vec<T::AccountId>) -> Vec<T::AccountId> {
 			// let random_seed = Self::get_and_increment_nonce();
 			let random_seed = frame_system::Pallet::<T>::parent_hash().encode();
-			let random_value = T::Randomness::random(&random_seed);
-			let random_value = <u64>::decode(&mut random_value.0.as_ref()).unwrap_or(0);
-
+			// let random_value = T::Randomness::random(&random_seed);
+			// let random_value = <u64>::decode(&mut random_value.0.as_ref()).unwrap_or(0);
+			let random_value = random_seed[0];
 			for i in (1..accounts.len()).rev() {
 				let j: usize = (random_value as usize) % (i + 1);
 				accounts.swap(i, j);
