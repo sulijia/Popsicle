@@ -29,7 +29,9 @@ fn register_app() {
 			BoundedVec::try_from("test".as_bytes().to_vec()).unwrap(),
 			123,
 			Some(BoundedVec::try_from("--chain dev".as_bytes().to_vec()).unwrap()),
-			None
+			None,
+			None,
+			None,
 		));
 		let app = ContainerModule::appinfo_map(1).unwrap();
 		assert_eq!(app.app_hash, H256::from([1; 32]));
