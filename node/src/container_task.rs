@@ -476,6 +476,7 @@ async fn process_run_task(
 					log::info!("kill docker instance2:{:?}", kill_result);
 				}
 				app.instance2_docker_name = None;
+				app.instance2_docker = false;
 			} else {
 				let other_instance = &mut app.instance2;
 				if let Some(ref mut other_instance) = other_instance {
@@ -496,6 +497,7 @@ async fn process_run_task(
 					log::info!("kill docker instance1:{:?}", kill_result);
 				}
 				app.instance1_docker_name = None;
+				app.instance1_docker = false;
 			} else {
 				let other_instance = &mut app.instance1;
 				if let Some(ref mut other_instance) = other_instance {
@@ -659,11 +661,8 @@ where
 				if option_args == None {
 					option_args = if let Some(storage) = offchain_storage {
 						let prefix = &STORAGE_PREFIX;
-						let option_args = format!(
-							"{}:{}",
-							std::str::from_utf8(OPTION_ARGS_KEY).unwrap(),
-							app.group_id
-						);
+						let option_args =
+							format!("{}:{}", std::str::from_utf8(OPTION_ARGS_KEY).unwrap(), app_id);
 
 						storage.get(prefix, option_args.as_bytes())
 					} else {
