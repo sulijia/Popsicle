@@ -3,7 +3,7 @@ use codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_std::vec::Vec;
-#[derive(Debug, Clone, TypeInfo, Encode, Decode)]
+#[derive(Debug, Clone, TypeInfo, Encode, Decode, Default)]
 pub struct DownloadInfo {
 	pub app_hash: H256,
 	pub file_name: Vec<u8>,

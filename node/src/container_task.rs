@@ -150,6 +150,7 @@ async fn download_sdk(
 		println!("check ok");
 	} else {
 		println!("check fail");
+		Err("Hash check fail.")?;
 	}
 
 	Ok(())
@@ -248,11 +249,17 @@ enum InstanceIndex {
 	Instance1,
 	Instance2,
 }
-
+#[derive(Debug, PartialEq, Eq)]
+enum RunStatus {
+	Pending,
+	Downloading,
+	Downloaded,
+	Running,
+}
 #[derive(Debug)]
 struct RunningApp {
 	group_id: u32,
-	running: bool,
+	running: RunStatus,
 	app_info: Option<DownloadInfo>,
 	instance1: Option<Child>,
 	instance2: Option<Child>,
@@ -332,6 +339,7 @@ async fn process_download_task(
 		let mut app = running_app.lock().await;
 		app.app_info = Some(app_info);
 		app.group_id = new_group;
+		app.running = RunStatus::Downloaded;
 	}
 	Ok(())
 }
@@ -577,7 +585,8 @@ where
 		match should_load {
 			Some(app_info) => {
 				let new_group = app_info.group;
-				if old_group_id != new_group {
+				let run_status = &app.running;
+				if old_group_id != new_group && *run_status == RunStatus::Pending {
 					if sync_args == None {
 						sync_args = if let Some(storage) = offchain_storage.clone() {
 							let prefix = &STORAGE_PREFIX;
@@ -607,8 +616,7 @@ where
 						};
 					}
 					log::info!("offchain_storage of option_args:{:?}", option_args);
-					app.running = false;
-
+					app.running = RunStatus::Downloading;
 					tokio::spawn(process_download_task(
 						data_path.clone(),
 						app_info,
@@ -626,9 +634,9 @@ where
 
 	if should_run {
 		let mut app = running_app.lock().await;
-
+		let run_status = &app.running;
 		if let Some(app_info) = app.app_info.clone() {
-			if !app.running {
+			if *run_status == RunStatus::Downloaded {
 				log::info!("run:{:?}", app);
 				if run_args == None {
 					run_args = if let Some(storage) = offchain_storage.clone() {
@@ -668,7 +676,7 @@ where
 					StartType::RUN,
 				));
 
-				app.running = true;
+				app.running = RunStatus::Pending;
 			}
 		}
 	}
@@ -720,7 +728,7 @@ async fn relay_chain_notification<P, R, Block, TBackend>(
 	pin_mut!(new_best_heads);
 	let runing_app = Arc::new(Mutex::new(RunningApp {
 		group_id: 0xFFFFFFFF,
-		running: false,
+		running: RunStatus::Pending,
 		app_info: None,
 		instance1: None,
 		instance2: None,
