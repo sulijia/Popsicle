@@ -259,6 +259,7 @@ enum RunStatus {
 #[derive(Debug)]
 struct RunningApp {
 	group_id: u32,
+	app_id: u32,
 	running: RunStatus,
 	app_info: Option<DownloadInfo>,
 	instance1: Option<Child>,
@@ -340,6 +341,9 @@ async fn process_download_task(
 		app.app_info = Some(app_info);
 		app.group_id = new_group;
 		app.running = RunStatus::Downloaded;
+	} else {
+		let mut app = running_app.lock().await;
+		app.running = RunStatus::Pending;
 	}
 	Ok(())
 }
@@ -585,6 +589,7 @@ where
 		match should_load {
 			Some(app_info) => {
 				let new_group = app_info.group;
+				let app_id = app_info.app_id;
 				let run_status = &app.running;
 				if old_group_id != new_group && *run_status == RunStatus::Pending {
 					if sync_args == None {
@@ -593,7 +598,7 @@ where
 							let sync_args = format!(
 								"{}:{}",
 								std::str::from_utf8(SYNC_ARGS_KEY).unwrap(),
-								new_group
+								app_id
 							);
 							storage.get(prefix, sync_args.as_bytes())
 						} else {
@@ -607,7 +612,7 @@ where
 							let option_args = format!(
 								"{}:{}",
 								std::str::from_utf8(OPTION_ARGS_KEY).unwrap(),
-								new_group
+								app_id
 							);
 
 							storage.get(prefix, option_args.as_bytes())
@@ -617,6 +622,7 @@ where
 					}
 					log::info!("offchain_storage of option_args:{:?}", option_args);
 					app.running = RunStatus::Downloading;
+					app.app_id = app_id;
 					tokio::spawn(process_download_task(
 						data_path.clone(),
 						app_info,
@@ -635,17 +641,15 @@ where
 	if should_run {
 		let mut app = running_app.lock().await;
 		let run_status = &app.running;
+		let app_id = app.app_id;
 		if let Some(app_info) = app.app_info.clone() {
 			if *run_status == RunStatus::Downloaded {
 				log::info!("run:{:?}", app);
 				if run_args == None {
 					run_args = if let Some(storage) = offchain_storage.clone() {
 						let prefix = &STORAGE_PREFIX;
-						let run_args = format!(
-							"{}:{}",
-							std::str::from_utf8(RUN_ARGS_KEY).unwrap(),
-							app.group_id
-						);
+						let run_args =
+							format!("{}:{}", std::str::from_utf8(RUN_ARGS_KEY).unwrap(), app_id);
 
 						storage.get(prefix, run_args.as_bytes())
 					} else {
@@ -728,6 +732,7 @@ async fn relay_chain_notification<P, R, Block, TBackend>(
 	pin_mut!(new_best_heads);
 	let runing_app = Arc::new(Mutex::new(RunningApp {
 		group_id: 0xFFFFFFFF,
+		app_id: 0xFFFFFFFF,
 		running: RunStatus::Pending,
 		app_info: None,
 		instance1: None,

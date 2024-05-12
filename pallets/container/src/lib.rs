@@ -252,6 +252,7 @@ impl<T: Config> Pallet<T> {
 			.and_then(|docker_image| Some(docker_image.as_slice().to_vec()));
 
 		Some(DownloadInfo {
+			app_id,
 			app_hash: app_info.app_hash,
 			file_name: app_info.file_name.into(),
 			size: app_info.size,
