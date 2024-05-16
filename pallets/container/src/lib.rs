@@ -17,7 +17,7 @@ use cumulus_primitives_core::relay_chain::Hash;
 use frame_support::pallet_prelude::*;
 use frame_system::pallet_prelude::*;
 use pallet_sequencer_grouping::SequencerGroup;
-use primitives_container::DownloadInfo;
+use primitives_container::{DownloadInfo, ProcessorDownloadInfo};
 use scale_info::{prelude::vec::Vec, TypeInfo};
 use sp_runtime::BoundedVec;
 use sp_std::vec;
@@ -37,6 +37,22 @@ pub struct APPInfo<T: Config> {
 	is_docker_image: Option<bool>,
 	docker_image: Option<BoundedVec<u8, T::MaxLengthFileName>>,
 }
+
+#[derive(Encode, Decode, Default, Clone, TypeInfo, MaxEncodedLen, Debug)]
+#[scale_info(skip_type_params(T))]
+pub struct ProcessorInfo<T: Config> {
+	app_hash: Hash,
+	creator: T::AccountId,
+	ip_address: BoundedVec<u8, T::MaxLengthIP>,
+	project_name: BoundedVec<u8, T::MaxLengthFileName>,
+	file_name: BoundedVec<u8, T::MaxLengthFileName>,
+	size: u32,
+	args: Option<BoundedVec<u8, T::MaxArgLength>>,
+	log: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+	is_docker_image: Option<bool>,
+	docker_image: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+}
+
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -65,6 +81,9 @@ pub mod pallet {
 
 		#[pallet::constant]
 		type MaxArgLength: Get<u32>;
+
+		#[pallet::constant]
+		type MaxLengthIP: Get<u32>;
 	}
 
 	#[pallet::type_value]
@@ -82,6 +101,11 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn appinfo_map)]
 	pub type APPInfoMap<T: Config> = StorageMap<_, Twox64Concat, u32, APPInfo<T>, OptionQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn processorinfo_map)]
+	pub type ProcessorInfoMap<T: Config> =
+		StorageMap<_, Twox64Concat, u32, ProcessorInfo<T>, OptionQuery>;
 
 	// app_id,inuse
 	#[pallet::storage]
@@ -111,6 +135,7 @@ pub mod pallet {
 	#[pallet::error]
 	pub enum Error<T> {
 		AppNotExist,
+		AccountInconsistent,
 	}
 
 	#[pallet::hooks]
@@ -223,6 +248,103 @@ pub mod pallet {
 			Pallet::<T>::deposit_event(Event::<T>::SetDownloadURL { url });
 			Ok(())
 		}
+
+		#[pallet::call_index(2)]
+		#[pallet::weight(<T as pallet::Config>::WeightInfo::register_app())]
+		pub fn register_processor(
+			origin: OriginFor<T>,
+			ip_address: BoundedVec<u8, T::MaxLengthIP>,
+			app_hash: Hash,
+			project_name: BoundedVec<u8, T::MaxLengthFileName>,
+			file_name: BoundedVec<u8, T::MaxLengthFileName>,
+			size: u32,
+			args: Option<BoundedVec<u8, T::MaxArgLength>>,
+			log: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+			is_docker_image: Option<bool>,
+			docker_image: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			let max_app_id = NextApplicationID::<T>::get();
+
+			let mut processor_id = 0;
+
+			for app_id in 1..max_app_id {
+				let app_info = ProcessorInfoMap::<T>::get(app_id);
+				if let Some(app) = app_info {
+					if app.project_name == project_name {
+						processor_id = app_id;
+
+						ensure!(app.creator == who, Error::<T>::AccountInconsistent);
+					}
+				}
+			}
+			ensure!(processor_id > 0, Error::<T>::AppNotExist);
+			ProcessorInfoMap::<T>::insert(
+				processor_id,
+				ProcessorInfo {
+					app_hash,
+					creator: who,
+					ip_address,
+					project_name: project_name.clone(),
+					file_name: file_name.clone(),
+					size,
+					args,
+					log,
+					is_docker_image,
+					docker_image,
+				},
+			);
+			Ok(())
+		}
+
+		#[pallet::call_index(3)]
+		#[pallet::weight(<T as pallet::Config>::WeightInfo::register_app())]
+		pub fn update_processor(
+			origin: OriginFor<T>,
+			ip_address: BoundedVec<u8, T::MaxLengthIP>,
+			app_hash: Hash,
+			project_name: BoundedVec<u8, T::MaxLengthFileName>,
+			file_name: BoundedVec<u8, T::MaxLengthFileName>,
+			size: u32,
+			args: Option<BoundedVec<u8, T::MaxArgLength>>,
+			log: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+			is_docker_image: Option<bool>,
+			docker_image: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+
+			let max_app_id = NextApplicationID::<T>::get();
+
+			let mut processor_id = 0;
+
+			for app_id in 1..max_app_id {
+				let app_info = ProcessorInfoMap::<T>::get(app_id);
+				if let Some(app) = app_info {
+					if app.project_name == project_name {
+						processor_id = app_id;
+
+						ensure!(app.creator == who, Error::<T>::AccountInconsistent);
+					}
+				}
+			}
+			ensure!(processor_id > 0, Error::<T>::AppNotExist);
+			ProcessorInfoMap::<T>::mutate(processor_id, |info| {
+				*info = Some(ProcessorInfo {
+					app_hash,
+					creator: who,
+					ip_address,
+					project_name: project_name.clone(),
+					file_name: file_name.clone(),
+					size,
+					args,
+					log,
+					is_docker_image,
+					docker_image,
+				})
+			});
+			Ok(())
+		}
 	}
 }
 
@@ -279,15 +401,75 @@ impl<T: Config> Pallet<T> {
 
 	pub fn get_group_id(author: T::AccountId) -> u32 {
 		let group_id_result = <pallet_sequencer_grouping::Pallet<T>>::account_in_group(author);
-		log::info!("new groupID:{:?}", group_id_result);
-
-		if group_id_result.is_ok() {
-			group_id_result.unwrap()
+		if let Ok(group_id) = group_id_result {
+			log::info!("new groupID:{:?}", group_id);
+			group_id
 		} else {
 			0xFFFFFFFF
 		}
 	}
 	pub fn get_groups() -> Vec<u32> {
 		<pallet_sequencer_grouping::Pallet<T>>::all_group_ids()
+	}
+
+	pub fn processor_run(ip: Vec<u8>) -> Option<ProcessorDownloadInfo> {
+		let max_app_id = NextApplicationID::<T>::get();
+
+		let mut processor_id = 0;
+
+		for app_id in 1..max_app_id {
+			let app_info = ProcessorInfoMap::<T>::get(app_id);
+			if let Some(app) = app_info {
+				if app.ip_address == ip {
+					processor_id = app_id;
+				}
+			}
+		}
+		if processor_id == 0 {
+			return None;
+		}
+
+		let groups = Self::get_groups();
+		let mut valid_id = 0;
+		for group in groups.iter() {
+			let app = GroupAPPMap::<T>::get(group);
+			match app {
+				Some(app_id) =>
+					if processor_id == app_id {
+						valid_id = app_id;
+						break;
+					},
+				None => {},
+			}
+		}
+		if processor_id == 0 {
+			return None;
+		}
+		let app_id = valid_id;
+		let app_info = ProcessorInfoMap::<T>::get(app_id).ok_or(Error::<T>::AppNotExist).ok()?;
+
+		let url = DefaultUrl::<T>::get()?;
+
+		let args = app_info.args.and_then(|log| Some(log.as_slice().to_vec()));
+
+		let log = app_info.log.and_then(|log| Some(log.as_slice().to_vec()));
+
+		let is_docker_image =
+			if let Some(is_docker) = app_info.is_docker_image { is_docker } else { false };
+
+		let docker_image = app_info
+			.docker_image
+			.and_then(|docker_image| Some(docker_image.as_slice().to_vec()));
+
+		Some(ProcessorDownloadInfo {
+			app_hash: app_info.app_hash,
+			file_name: app_info.file_name.into(),
+			size: app_info.size,
+			url: url.into(),
+			args,
+			log,
+			is_docker_image,
+			docker_image,
+		})
 	}
 }

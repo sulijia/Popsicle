@@ -53,7 +53,7 @@ use pallet_sequencer_grouping::SimpleRandomness;
 use pallet_sequencer_staking::WeightInfo;
 use pallet_xcm::{EnsureXcm, IsVoiceOfBody};
 use parachains_common::message_queue::{NarrowOriginToSibling, ParaIdToSibling};
-use primitives_container::DownloadInfo;
+use primitives_container::{DownloadInfo, ProcessorDownloadInfo};
 pub use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::ConstU128;
 use sp_runtime::DispatchErrorWithPostInfo;
@@ -585,6 +585,7 @@ parameter_types! {
 	pub const MaxUrlLength: u32 = 300;
 	pub const MaxArgCount: u32 = 10;
 	pub const MaxArgLength: u32 = 100;
+	pub const MaxLengthIP: u32 = 30;
 }
 
 impl pallet_container::Config for Runtime {
@@ -595,6 +596,7 @@ impl pallet_container::Config for Runtime {
 	type MaxUrlLength = MaxUrlLength;
 	type MaxArgCount = MaxArgCount;
 	type MaxArgLength = MaxArgLength;
+	type MaxLengthIP = MaxLengthIP;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -808,6 +810,10 @@ impl_runtime_apis! {
 		}
 		fn should_run()-> bool {
 			ContainerPallet::should_run()
+		}
+
+		fn processor_run(ip:Vec<u8>)->Option<ProcessorDownloadInfo> {
+			ContainerPallet::processor_run(ip)
 		}
 	}
 

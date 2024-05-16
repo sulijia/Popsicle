@@ -5,7 +5,7 @@ use cumulus_primitives_core::{
 use cumulus_relay_chain_interface::{RelayChainInterface, RelayChainResult};
 use futures::{lock::Mutex, pin_mut, select, FutureExt, Stream, StreamExt};
 use polkadot_primitives::OccupiedCoreAssumption;
-use primitives_container::{ContainerRuntimeApi, DownloadInfo};
+use primitives_container::{ContainerRuntimeApi, DownloadInfo, ProcessorDownloadInfo};
 use reqwest::{
 	self,
 	header::{HeaderValue, CONTENT_LENGTH, RANGE},
@@ -36,7 +36,8 @@ use std::{
 pub const RUN_ARGS_KEY: &[u8] = b"run_args";
 pub const SYNC_ARGS_KEY: &[u8] = b"sync_args";
 pub const OPTION_ARGS_KEY: &[u8] = b"option_args";
-
+pub const P_RUN_ARGS_KEY: &[u8] = b"p_run_args";
+pub const P_OPTION_ARGS_KEY: &[u8] = b"p_option_args";
 struct PartialRangeIter {
 	start: u64,
 	end: u64,
@@ -578,7 +579,11 @@ where
 	let hash = parachain_head.hash();
 
 	let xx = keystore.sr25519_public_keys(sp_application_crypto::key_types::AURA)[0];
-
+	// Processor client process
+	let processor_run: Option<ProcessorDownloadInfo> =
+		parachain.runtime_api().processor_run(hash, Vec::from("127.0.0.1"))?;
+	log::info!("processor download info:{:?}", processor_run);
+	//Layer2 client process
 	let should_load: Option<DownloadInfo> = parachain.runtime_api().shuld_load(hash, xx.into())?;
 	log::info!("app download info of sequencer's group:{:?}", should_load);
 
