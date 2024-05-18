@@ -29,6 +29,7 @@ tempfile="3.9.0"
 error-chain="0.12.4"
 ring="0.17.8"
 tokio = { version = "1.22.0", features = ["parking_lot", "rt-multi-thread", "time"] }
+get_local_info = "0.2.4"
 
 # Local
 primitives-container = { path = "../primitives/container"}
