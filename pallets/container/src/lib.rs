@@ -270,7 +270,7 @@ pub mod pallet {
 			let mut processor_id = 0;
 
 			for app_id in 1..max_app_id {
-				let app_info = ProcessorInfoMap::<T>::get(app_id);
+				let app_info = APPInfoMap::<T>::get(app_id);
 				if let Some(app) = app_info {
 					if app.project_name == project_name {
 						processor_id = app_id;
@@ -319,7 +319,7 @@ pub mod pallet {
 			let mut processor_id = 0;
 
 			for app_id in 1..max_app_id {
-				let app_info = ProcessorInfoMap::<T>::get(app_id);
+				let app_info = APPInfoMap::<T>::get(app_id);
 				if let Some(app) = app_info {
 					if app.project_name == project_name {
 						processor_id = app_id;
@@ -352,7 +352,7 @@ impl<T: Config> Pallet<T> {
 	// Obtain application information corresponding to the group.
 	// If no group has been assigned or there are no available apps in the group, return None
 	pub fn shuld_load(author: T::AccountId) -> Option<DownloadInfo> {
-		log::info!("============author:{:?}", author.encode());
+		// log::info!("============author:{:?}", author.encode());
 		//Get the group ID of the sequencer, error when got 0xFFFFFFFF
 		let group_id = Self::get_group_id(author);
 

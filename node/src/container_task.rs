@@ -680,9 +680,9 @@ async fn app_run_task(
 					let kill_result = other_instance.wait()?;
 					log::info!("kill instance2:{:?}", kill_result);
 				}
-				app.instance1 = instance;
 				app.instance2 = None;
 			}
+			app.instance1 = instance;
 			app.cur_ins = InstanceIndex::Instance2;
 		} else {
 			if app.instance1_docker {
@@ -701,9 +701,9 @@ async fn app_run_task(
 					let kill_result = other_instance.wait()?;
 					log::info!("kill instance1:{:?}", kill_result);
 				}
-				app.instance2 = instance;
 				app.instance1 = None;
 			}
+			app.instance2 = instance;
 			app.cur_ins = InstanceIndex::Instance1;
 		}
 	} else {

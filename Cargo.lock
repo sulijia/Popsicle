@@ -6388,6 +6388,7 @@ name = "pallet-container"
 version = "0.1.0"
 dependencies = [
  "cumulus-primitives-core",
+ "derivative",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
