@@ -34,6 +34,8 @@ pub struct APPInfo<T: Config> {
 	size: u32,
 	args: Option<BoundedVec<u8, T::MaxArgLength>>,
 	log: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+	is_docker_image: Option<bool>,
+	docker_image: Option<BoundedVec<u8, T::MaxLengthFileName>>,
 }
 #[frame_support::pallet]
 pub mod pallet {
@@ -167,6 +169,8 @@ pub mod pallet {
 			size: u32,
 			args: Option<BoundedVec<u8, T::MaxArgLength>>,
 			log: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+			is_docker_image: Option<bool>,
+			docker_image: Option<BoundedVec<u8, T::MaxLengthFileName>>,
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 
@@ -183,6 +187,8 @@ pub mod pallet {
 					size,
 					args,
 					log,
+					is_docker_image,
+					docker_image,
 				},
 			);
 
@@ -238,7 +244,15 @@ impl<T: Config> Pallet<T> {
 
 		let log = app_info.log.and_then(|log| Some(log.as_slice().to_vec()));
 
+		let is_docker_image =
+			if let Some(is_docker) = app_info.is_docker_image { is_docker } else { false };
+
+		let docker_image = app_info
+			.docker_image
+			.and_then(|docker_image| Some(docker_image.as_slice().to_vec()));
+
 		Some(DownloadInfo {
+			app_id,
 			app_hash: app_info.app_hash,
 			file_name: app_info.file_name.into(),
 			size: app_info.size,
@@ -246,6 +260,8 @@ impl<T: Config> Pallet<T> {
 			url: url.into(),
 			args,
 			log,
+			is_docker_image,
+			docker_image,
 		})
 	}
 
