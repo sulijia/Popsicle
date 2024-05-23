@@ -1,11 +1,8 @@
 use codec::Decode;
-use cumulus_primitives_core::{
-	relay_chain::BlockNumber as RelayBlockNumber, ParaId, PersistedValidationData,
-};
+use cumulus_primitives_core::{ParaId, PersistedValidationData};
 use cumulus_relay_chain_interface::{RelayChainInterface, RelayChainResult};
 use futures::{lock::Mutex, pin_mut, select, FutureExt, Stream, StreamExt};
 use polkadot_primitives::OccupiedCoreAssumption;
-use popsicle_runtime::pallet_container::ProcessorInfo;
 use primitives_container::{ContainerRuntimeApi, DownloadInfo, ProcessorDownloadInfo};
 use reqwest::{
 	self,
@@ -24,10 +21,11 @@ use sp_runtime::{
 	AccountId32,
 };
 use std::{
+	collections::HashMap,
 	error::Error,
 	fs::{self, File, Permissions},
 	io::{BufReader, Read},
-	os::unix::{fs::PermissionsExt, process},
+	os::unix::fs::PermissionsExt,
 	path::{Path, PathBuf},
 	process::{Child, Command, Stdio},
 	str::FromStr,
@@ -273,13 +271,19 @@ struct RunningApp {
 	instance2_docker_name: Option<Vec<u8>>,
 	cur_ins: InstanceIndex,
 }
+
 #[derive(Debug)]
-struct RunningProcessor {
+struct ProcessorInstance {
+	app_hash: H256,
 	running: RunStatus,
 	processor_info: Option<ProcessorDownloadInfo>,
 	instance: Option<Child>,
 	instance_docker: bool,
 	instance_docker_name: Option<Vec<u8>>,
+}
+#[derive(Debug)]
+struct RunningProcessor {
+	processors: HashMap<H256, ProcessorInstance>,
 }
 
 async fn app_download_task(
@@ -422,10 +426,8 @@ async fn processor_run_task(
 
 	let errors = outputs.try_clone()?;
 
-	let mut app = running_processor.lock().await;
-
 	// start new instance
-	let mut instance: Option<Child> = None;
+	let mut instance = None;
 	if run_as_docker {
 		let image_name = processor_info.docker_image.ok_or("docker image not exist")?;
 		let docker_image = std::str::from_utf8(&image_name)?;
@@ -454,15 +456,20 @@ async fn processor_run_task(
 				.expect("failed to execute process"),
 		);
 	}
-	app.instance = instance;
-	if run_as_docker {
-		app.instance_docker = true;
-		app.instance_docker_name = Some(processor_info.file_name);
-	} else {
-		app.instance_docker = false;
-		app.instance_docker_name = None;
-	}
-	log::info!("app:{:?}", app);
+	let mut running_processors = running_processor.lock().await;
+	let processor_instances = &mut running_processors.processors;
+	processor_instances.entry(processor_info.app_hash).and_modify(|app| {
+		app.instance = instance;
+		if run_as_docker {
+			app.instance_docker = true;
+			app.instance_docker_name = Some(processor_info.file_name);
+		} else {
+			app.instance_docker = false;
+			app.instance_docker_name = None;
+		}
+	});
+
+	log::info!("app:{:?}", running_processors);
 	Ok(())
 }
 async fn processor_task(
@@ -520,7 +527,7 @@ async fn processor_task(
 			}
 		}
 	}
-	if start_flag {
+	let status = if start_flag {
 		log::info!("===============run processor=================");
 		let result = processor_run_task(
 			data_path,
@@ -531,12 +538,15 @@ async fn processor_task(
 		)
 		.await;
 		log::info!("start processor result:{:?}", result);
-		let mut processor = running_processor.lock().await;
-		processor.running = RunStatus::Downloaded;
+		RunStatus::Downloaded
 	} else {
-		let mut processor = running_processor.lock().await;
-		processor.running = RunStatus::Pending;
-	}
+		RunStatus::Pending
+	};
+	let mut running_processors = running_processor.lock().await;
+	let processor_instances = &mut running_processors.processors;
+	processor_instances
+		.entry(processor_info.app_hash)
+		.and_modify(|instance| instance.running = status);
 	Ok(())
 }
 
@@ -777,15 +787,24 @@ where
 
 	log::info!("ip_address:{:?}", ip_address);
 
-	let processor_run: Option<ProcessorDownloadInfo> =
-		parachain.runtime_api().processor_run(hash, Vec::from(ip_address))?;
+	let processor_infos: Vec<ProcessorDownloadInfo> =
+		parachain.runtime_api().processor_run(hash, xx.into())?;
 
-	log::info!("processor download info:{:?}", processor_run);
+	log::info!("processor download info:{:?}", processor_infos);
 
-	match processor_run {
-		Some(pcsInfo) => {
-			let mut processor = running_processor.lock().await;
-
+	{
+		let mut running_processors = running_processor.lock().await;
+		let processors = &mut running_processors.processors;
+		for processor_info in processor_infos {
+			let app_hash = processor_info.app_hash;
+			let processor = processors.entry(app_hash).or_insert(ProcessorInstance {
+				app_hash,
+				running: RunStatus::Pending,
+				processor_info: None,
+				instance: None,
+				instance_docker: false,
+				instance_docker_name: None,
+			});
 			let run_status = &processor.running;
 
 			if *run_status == RunStatus::Pending {
@@ -801,15 +820,14 @@ where
 				};
 				tokio::spawn(processor_task(
 					data_path.clone(),
-					pcsInfo,
+					processor_info,
 					running_processor.clone(),
 					run_args,
 					option_args,
 				));
 			}
-		},
-		None => log::info!("Processor None"),
-	};
+		}
+	}
 	//Layer2 client process
 	let should_load: Option<DownloadInfo> = parachain.runtime_api().shuld_load(hash, xx.into())?;
 	log::info!("app download info of sequencer's group:{:?}", should_load);
@@ -985,18 +1003,12 @@ async fn relay_chain_notification<P, R, Block, TBackend>(
 		instance2_docker_name: None,
 		cur_ins: InstanceIndex::Instance1,
 	}));
-	let runing_processor = Arc::new(Mutex::new(RunningProcessor {
-		running: RunStatus::Pending,
-		processor_info: None,
-		instance: None,
-		instance_docker: false,
-		instance_docker_name: None,
-	}));
+	let runing_processor = Arc::new(Mutex::new(RunningProcessor { processors: HashMap::new() }));
 	loop {
 		select! {
 			h = new_best_heads.next() => {
 				match h {
-					Some((height, head, hash)) => {
+					Some((_height, head, _hash)) => {
 						let _ = handle_new_best_parachain_head(head, &*parachain,keystore.clone(), data_path.clone(), runing_app.clone(),runing_processor.clone(), backend.clone()).await;
 					},
 					None => {
