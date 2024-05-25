@@ -13,7 +13,7 @@ use ring::digest::{Context, Digest, SHA256};
 use sc_client_api::UsageProvider;
 use sc_service::TaskManager;
 use sp_api::ProvideRuntimeApi;
-use sp_core::{offchain::OffchainStorage, H256};
+use sp_core::{hexdisplay::HexDisplay, offchain::OffchainStorage, H256};
 use sp_keystore::KeystorePtr;
 use sp_offchain::STORAGE_PREFIX;
 use sp_runtime::{
@@ -32,11 +32,11 @@ use std::{
 	sync::Arc,
 };
 
-pub const RUN_ARGS_KEY: &[u8] = b"run_args";
-pub const SYNC_ARGS_KEY: &[u8] = b"sync_args";
-pub const OPTION_ARGS_KEY: &[u8] = b"option_args";
-pub const P_RUN_ARGS_KEY: &[u8] = b"p_run_args";
-pub const P_OPTION_ARGS_KEY: &[u8] = b"p_option_args";
+pub const RUN_ARGS_KEY: &str = "run_args";
+pub const SYNC_ARGS_KEY: &str = "sync_args";
+pub const OPTION_ARGS_KEY: &str = "option_args";
+pub const P_RUN_ARGS_KEY: &str = "p_run_args";
+pub const P_OPTION_ARGS_KEY: &str = "p_option_args";
 struct PartialRangeIter {
 	start: u64,
 	end: u64,
@@ -261,6 +261,7 @@ enum RunStatus {
 struct RunningApp {
 	group_id: u32,
 	app_id: u32,
+	app_hash: H256,
 	running: RunStatus,
 	app_info: Option<DownloadInfo>,
 	instance1: Option<Child>,
@@ -741,6 +742,21 @@ async fn app_run_task(
 	Ok(())
 }
 
+async fn get_offchain_storage<Block, TBackend>(
+	offchain_storage: Option<TBackend::OffchainStorage>,
+	args: &[u8],
+) -> Option<Vec<u8>>
+where
+	Block: BlockT,
+	TBackend: 'static + sc_client_api::backend::Backend<Block> + Send,
+{
+	if let Some(storage) = offchain_storage {
+		storage.get(&STORAGE_PREFIX, args)
+	} else {
+		None
+	}
+}
+
 async fn handle_new_best_parachain_head<P, Block, TBackend>(
 	validation_data: PersistedValidationData,
 	parachain: &P,
@@ -759,17 +775,6 @@ where
 {
 	let offchain_storage = backend.offchain_storage();
 
-	let (mut run_args, mut sync_args, mut option_args) =
-		if let Some(storage) = offchain_storage.clone() {
-			let prefix = &STORAGE_PREFIX;
-			(
-				storage.get(prefix, RUN_ARGS_KEY),
-				storage.get(prefix, SYNC_ARGS_KEY),
-				storage.get(prefix, OPTION_ARGS_KEY),
-			)
-		} else {
-			(None, None, None)
-		};
 	// Check if there is a download task
 	let head = validation_data.clone().parent_head.0;
 
@@ -800,7 +805,7 @@ where
 			let processor = processors.entry(app_hash).or_insert(ProcessorInstance {
 				app_hash,
 				running: RunStatus::Pending,
-				processor_info: None,
+				processor_info: Some(processor_info.clone()),
 				instance: None,
 				instance_docker: false,
 				instance_docker_name: None,
@@ -809,15 +814,21 @@ where
 
 			if *run_status == RunStatus::Pending {
 				processor.running = RunStatus::Downloading;
-
-				let (mut run_args, mut option_args) = if let Some(storage) =
-					offchain_storage.clone()
-				{
-					let prefix = &STORAGE_PREFIX;
-					(storage.get(prefix, P_RUN_ARGS_KEY), storage.get(prefix, P_OPTION_ARGS_KEY))
-				} else {
-					(None, None)
-				};
+				let app_hash = processor.app_hash;
+				let p_run_args_key =
+					format!("{}:{}", P_RUN_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
+				let p_option_args_key =
+					format!("{}:{}", P_OPTION_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
+				let run_args = get_offchain_storage::<_, TBackend>(
+					offchain_storage.clone(),
+					p_run_args_key.as_bytes(),
+				)
+				.await;
+				let option_args = get_offchain_storage::<_, TBackend>(
+					offchain_storage.clone(),
+					p_option_args_key.as_bytes(),
+				)
+				.await;
 				tokio::spawn(processor_task(
 					data_path.clone(),
 					processor_info,
@@ -841,39 +852,35 @@ where
 			Some(app_info) => {
 				let new_group = app_info.group;
 				let app_id = app_info.app_id;
+				let app_hash = app_info.app_hash;
 				let run_status = &app.running;
 				if old_group_id != new_group && *run_status == RunStatus::Pending {
-					if sync_args == None {
-						sync_args = if let Some(storage) = offchain_storage.clone() {
-							let prefix = &STORAGE_PREFIX;
-							let sync_args = format!(
-								"{}:{}",
-								std::str::from_utf8(SYNC_ARGS_KEY).unwrap(),
-								app_id
-							);
-							storage.get(prefix, sync_args.as_bytes())
-						} else {
-							None
-						};
-					}
-					log::info!("offchain_storage of sync_args:{:?}", sync_args);
-					if option_args == None {
-						option_args = if let Some(storage) = offchain_storage.clone() {
-							let prefix = &STORAGE_PREFIX;
-							let option_args = format!(
-								"{}:{}",
-								std::str::from_utf8(OPTION_ARGS_KEY).unwrap(),
-								app_id
-							);
+					let sync_args_key =
+						format!("{}:{}", SYNC_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
 
-							storage.get(prefix, option_args.as_bytes())
-						} else {
-							None
-						};
-					}
+					let option_args_key =
+						format!("{}:{}", OPTION_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
+
+					let sync_args = get_offchain_storage::<_, TBackend>(
+						offchain_storage.clone(),
+						sync_args_key.as_bytes(),
+					)
+					.await;
+
+					let option_args = get_offchain_storage::<_, TBackend>(
+						offchain_storage.clone(),
+						option_args_key.as_bytes(),
+					)
+					.await;
+
+					log::info!("offchain_storage of sync_args:{:?}", sync_args);
+
 					log::info!("offchain_storage of option_args:{:?}", option_args);
+
 					app.running = RunStatus::Downloading;
+
 					app.app_id = app_id;
+					app.app_hash = app_hash;
 					tokio::spawn(app_download_task(
 						data_path.clone(),
 						app_info,
@@ -892,32 +899,28 @@ where
 	if should_run {
 		let mut app = running_app.lock().await;
 		let run_status = &app.running;
-		let app_id = app.app_id;
+		let app_hash = app.app_hash;
 		if let Some(app_info) = app.app_info.clone() {
 			if *run_status == RunStatus::Downloaded {
 				log::info!("run:{:?}", app);
-				if run_args == None {
-					run_args = if let Some(storage) = offchain_storage.clone() {
-						let prefix = &STORAGE_PREFIX;
-						let run_args =
-							format!("{}:{}", std::str::from_utf8(RUN_ARGS_KEY).unwrap(), app_id);
+				let run_args_key =
+					format!("{}:{}", RUN_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
 
-						storage.get(prefix, run_args.as_bytes())
-					} else {
-						None
-					};
-				}
-				if option_args == None {
-					option_args = if let Some(storage) = offchain_storage {
-						let prefix = &STORAGE_PREFIX;
-						let option_args =
-							format!("{}:{}", std::str::from_utf8(OPTION_ARGS_KEY).unwrap(), app_id);
+				let option_args_key =
+					format!("{}:{}", OPTION_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
 
-						storage.get(prefix, option_args.as_bytes())
-					} else {
-						None
-					};
-				}
+				let run_args = get_offchain_storage::<_, TBackend>(
+					offchain_storage.clone(),
+					run_args_key.as_bytes(),
+				)
+				.await;
+
+				let option_args = get_offchain_storage::<_, TBackend>(
+					offchain_storage.clone(),
+					option_args_key.as_bytes(),
+				)
+				.await;
+				log::info!("offchain_storage of run_args:{:?}", run_args);
 				log::info!("offchain_storage of option_args:{:?}", option_args);
 				tokio::spawn(app_run_task(
 					data_path,
@@ -993,6 +996,7 @@ async fn relay_chain_notification<P, R, Block, TBackend>(
 	let runing_app = Arc::new(Mutex::new(RunningApp {
 		group_id: 0xFFFFFFFF,
 		app_id: 0xFFFFFFFF,
+		app_hash: Default::default(),
 		running: RunStatus::Pending,
 		app_info: None,
 		instance1: None,
