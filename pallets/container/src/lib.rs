@@ -14,29 +14,55 @@ mod benchmarking;
 pub mod weights;
 use codec::{Decode, Encode, MaxEncodedLen};
 use cumulus_primitives_core::relay_chain::Hash;
+use derivative::Derivative;
 use frame_support::pallet_prelude::*;
 use frame_system::pallet_prelude::*;
 use pallet_sequencer_grouping::SequencerGroup;
-use primitives_container::DownloadInfo;
+use primitives_container::{DownloadInfo, ProcessorDownloadInfo};
 use scale_info::{prelude::vec::Vec, TypeInfo};
 use sp_runtime::BoundedVec;
-use sp_std::vec;
+use sp_std::{boxed::Box, vec};
 pub use weights::*;
+
+#[derive(Derivative, Encode, Decode, TypeInfo, MaxEncodedLen)]
+#[derivative(
+	Clone(bound = ""),
+	Eq(bound = ""),
+	PartialEq(bound = ""),
+	Debug(bound = ""),
+	Default(bound = "")
+)]
+#[codec(encode_bound())]
+#[codec(decode_bound())]
+#[scale_info(bounds(), skip_type_params(T))]
+pub struct AppClient<T: Config> {
+	pub app_hash: Hash,
+
+	pub file_name: BoundedVec<u8, T::MaxLengthFileName>,
+
+	pub size: u32,
+
+	pub args: Option<BoundedVec<u8, T::MaxArgLength>>,
+
+	pub log: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+
+	pub is_docker_image: Option<bool>,
+
+	pub docker_image: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+}
 
 #[derive(Encode, Decode, Default, Clone, TypeInfo, MaxEncodedLen, Debug)]
 #[scale_info(skip_type_params(T))]
 pub struct APPInfo<T: Config> {
-	app_hash: Hash,
 	creator: T::AccountId,
+
 	project_name: BoundedVec<u8, T::MaxLengthFileName>,
-	file_name: BoundedVec<u8, T::MaxLengthFileName>,
-	uploaded: bool,
-	size: u32,
-	args: Option<BoundedVec<u8, T::MaxArgLength>>,
-	log: Option<BoundedVec<u8, T::MaxLengthFileName>>,
-	is_docker_image: Option<bool>,
-	docker_image: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+
+	consensus_client: AppClient<T>,
+
+	batch_client: AppClient<T>,
 }
+
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -97,11 +123,15 @@ pub mod pallet {
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		ReisterApp {
+			creator: T::AccountId,
 			appid: u32,
 			project_name: BoundedVec<u8, T::MaxLengthFileName>,
-			file_name: BoundedVec<u8, T::MaxLengthFileName>,
-			hash: Hash,
-			size: u32,
+			consensus_client: BoundedVec<u8, T::MaxLengthFileName>,
+			consensus_hash: Hash,
+			consensus_size: u32,
+			batch_client: BoundedVec<u8, T::MaxLengthFileName>,
+			batch_hash: Hash,
+			batch_size: u32,
 		},
 		SetDownloadURL {
 			url: BoundedVec<u8, T::MaxUrlLength>,
@@ -111,6 +141,7 @@ pub mod pallet {
 	#[pallet::error]
 	pub enum Error<T> {
 		AppNotExist,
+		AccountInconsistent,
 	}
 
 	#[pallet::hooks]
@@ -163,32 +194,22 @@ pub mod pallet {
 		#[pallet::weight(<T as pallet::Config>::WeightInfo::register_app())]
 		pub fn register_app(
 			origin: OriginFor<T>,
-			app_hash: Hash,
 			project_name: BoundedVec<u8, T::MaxLengthFileName>,
-			file_name: BoundedVec<u8, T::MaxLengthFileName>,
-			size: u32,
-			args: Option<BoundedVec<u8, T::MaxArgLength>>,
-			log: Option<BoundedVec<u8, T::MaxLengthFileName>>,
-			is_docker_image: Option<bool>,
-			docker_image: Option<BoundedVec<u8, T::MaxLengthFileName>>,
+			consensus_client: Box<AppClient<T>>,
+			batch_client: Box<AppClient<T>>,
 		) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 
 			let old_application_id = NextApplicationID::<T>::get();
-
+			let consensus_app = *consensus_client;
+			let batch_app = *batch_client;
 			APPInfoMap::<T>::insert(
 				old_application_id,
 				APPInfo {
-					app_hash,
-					creator: who,
+					creator: who.clone(),
 					project_name: project_name.clone(),
-					file_name: file_name.clone(),
-					uploaded: false,
-					size,
-					args,
-					log,
-					is_docker_image,
-					docker_image,
+					consensus_client: consensus_app.clone(),
+					batch_client: batch_app.clone(),
 				},
 			);
 
@@ -200,11 +221,15 @@ pub mod pallet {
 			InuseMap::<T>::put(inuse_apps);
 
 			Pallet::<T>::deposit_event(Event::<T>::ReisterApp {
+				creator: who,
 				appid: old_application_id,
 				project_name,
-				file_name,
-				hash: app_hash,
-				size,
+				consensus_client: consensus_app.file_name,
+				consensus_hash: consensus_app.app_hash,
+				consensus_size: consensus_app.size,
+				batch_client: batch_app.file_name,
+				batch_hash: batch_app.app_hash,
+				batch_size: batch_app.size,
 			});
 
 			Ok(())
@@ -230,7 +255,7 @@ impl<T: Config> Pallet<T> {
 	// Obtain application information corresponding to the group.
 	// If no group has been assigned or there are no available apps in the group, return None
 	pub fn shuld_load(author: T::AccountId) -> Option<DownloadInfo> {
-		log::info!("============author:{:?}", author.encode());
+		// log::info!("============author:{:?}", author.encode());
 		//Get the group ID of the sequencer, error when got 0xFFFFFFFF
 		let group_id = Self::get_group_id(author);
 
@@ -240,22 +265,24 @@ impl<T: Config> Pallet<T> {
 
 		let url = DefaultUrl::<T>::get()?;
 
-		let args = app_info.args.and_then(|log| Some(log.as_slice().to_vec()));
+		let consensus_client = app_info.consensus_client;
 
-		let log = app_info.log.and_then(|log| Some(log.as_slice().to_vec()));
+		let args = consensus_client.args.and_then(|log| Some(log.as_slice().to_vec()));
+
+		let log = consensus_client.log.and_then(|log| Some(log.as_slice().to_vec()));
 
 		let is_docker_image =
-			if let Some(is_docker) = app_info.is_docker_image { is_docker } else { false };
+			if let Some(is_docker) = consensus_client.is_docker_image { is_docker } else { false };
 
-		let docker_image = app_info
+		let docker_image = consensus_client
 			.docker_image
 			.and_then(|docker_image| Some(docker_image.as_slice().to_vec()));
 
 		Some(DownloadInfo {
 			app_id,
-			app_hash: app_info.app_hash,
-			file_name: app_info.file_name.into(),
-			size: app_info.size,
+			app_hash: consensus_client.app_hash,
+			file_name: consensus_client.file_name.into(),
+			size: consensus_client.size,
 			group: group_id,
 			url: url.into(),
 			args,
@@ -279,15 +306,56 @@ impl<T: Config> Pallet<T> {
 
 	pub fn get_group_id(author: T::AccountId) -> u32 {
 		let group_id_result = <pallet_sequencer_grouping::Pallet<T>>::account_in_group(author);
-		log::info!("new groupID:{:?}", group_id_result);
-
-		if group_id_result.is_ok() {
-			group_id_result.unwrap()
+		if let Ok(group_id) = group_id_result {
+			log::info!("new groupID:{:?}", group_id);
+			group_id
 		} else {
 			0xFFFFFFFF
 		}
 	}
 	pub fn get_groups() -> Vec<u32> {
 		<pallet_sequencer_grouping::Pallet<T>>::all_group_ids()
+	}
+
+	pub fn processor_run(author: T::AccountId) -> Vec<ProcessorDownloadInfo> {
+		let processors = vec![1, 2];
+		let mut download_infos: Vec<ProcessorDownloadInfo> = Vec::new();
+		if Self::get_groups().len() == 0 {
+			return download_infos;
+		}
+		let url = DefaultUrl::<T>::get().expect("Need set url");
+
+		for app_id in processors {
+			let p_app_info = APPInfoMap::<T>::get(app_id);
+
+			if let Some(app_info) = p_app_info {
+				let batch_client = app_info.batch_client;
+
+				let args = batch_client.args.and_then(|log| Some(log.as_slice().to_vec()));
+
+				let log = batch_client.log.and_then(|log| Some(log.as_slice().to_vec()));
+
+				let is_docker_image = if let Some(is_docker) = batch_client.is_docker_image {
+					is_docker
+				} else {
+					false
+				};
+
+				let docker_image = batch_client
+					.docker_image
+					.and_then(|docker_image| Some(docker_image.as_slice().to_vec()));
+				download_infos.push(ProcessorDownloadInfo {
+					app_hash: batch_client.app_hash,
+					file_name: batch_client.file_name.into(),
+					size: batch_client.size,
+					url: url.clone().into(),
+					args,
+					log,
+					is_docker_image,
+					docker_image,
+				});
+			}
+		}
+		download_infos
 	}
 }

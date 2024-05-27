@@ -1,11 +1,9 @@
 use codec::Decode;
-use cumulus_primitives_core::{
-	relay_chain::BlockNumber as RelayBlockNumber, ParaId, PersistedValidationData,
-};
+use cumulus_primitives_core::{ParaId, PersistedValidationData};
 use cumulus_relay_chain_interface::{RelayChainInterface, RelayChainResult};
 use futures::{lock::Mutex, pin_mut, select, FutureExt, Stream, StreamExt};
 use polkadot_primitives::OccupiedCoreAssumption;
-use primitives_container::{ContainerRuntimeApi, DownloadInfo};
+use primitives_container::{ContainerRuntimeApi, DownloadInfo, ProcessorDownloadInfo};
 use reqwest::{
 	self,
 	header::{HeaderValue, CONTENT_LENGTH, RANGE},
@@ -15,7 +13,7 @@ use ring::digest::{Context, Digest, SHA256};
 use sc_client_api::UsageProvider;
 use sc_service::TaskManager;
 use sp_api::ProvideRuntimeApi;
-use sp_core::{offchain::OffchainStorage, H256};
+use sp_core::{hexdisplay::HexDisplay, offchain::OffchainStorage, H256};
 use sp_keystore::KeystorePtr;
 use sp_offchain::STORAGE_PREFIX;
 use sp_runtime::{
@@ -23,9 +21,9 @@ use sp_runtime::{
 	AccountId32,
 };
 use std::{
+	collections::HashMap,
 	error::Error,
-	fs,
-	fs::{File, Permissions},
+	fs::{self, File, Permissions},
 	io::{BufReader, Read},
 	os::unix::fs::PermissionsExt,
 	path::{Path, PathBuf},
@@ -33,10 +31,12 @@ use std::{
 	str::FromStr,
 	sync::Arc,
 };
-pub const RUN_ARGS_KEY: &[u8] = b"run_args";
-pub const SYNC_ARGS_KEY: &[u8] = b"sync_args";
-pub const OPTION_ARGS_KEY: &[u8] = b"option_args";
 
+pub const RUN_ARGS_KEY: &str = "run_args";
+pub const SYNC_ARGS_KEY: &str = "sync_args";
+pub const OPTION_ARGS_KEY: &str = "option_args";
+pub const P_RUN_ARGS_KEY: &str = "p_run_args";
+pub const P_OPTION_ARGS_KEY: &str = "p_option_args";
 struct PartialRangeIter {
 	start: u64,
 	end: u64,
@@ -85,7 +85,8 @@ async fn sha256_digest<R: Read>(mut reader: R) -> Result<Digest, Box<dyn Error +
 
 async fn download_sdk(
 	data_path: PathBuf,
-	app_info: DownloadInfo,
+	file_name: &str,
+	file_hash: H256,
 	url: &str,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
 	//firt create dir
@@ -100,7 +101,7 @@ async fn download_sdk(
 
 	let client = reqwest::blocking::Client::new();
 
-	let web_path = format!("{}/{}", url, std::str::from_utf8(&app_info.file_name)?);
+	let web_path = format!("{}/{}", url, file_name);
 	log::info!("=============download:{:?}", web_path);
 
 	let response = client.head(&web_path).send()?;
@@ -113,7 +114,7 @@ async fn download_sdk(
 	let length = u64::from_str(length.to_str()?).map_err(|_| "invalid Content-Length header")?;
 	log::info!("==========total length:{:?}", length);
 
-	let download_path = format!("{}/{}", path_str, std::str::from_utf8(&app_info.file_name)?);
+	let download_path = format!("{}/{}", path_str, file_name);
 	log::info!("=============download_path:{:?}", download_path);
 
 	let download_dir = Path::new(&download_path);
@@ -146,7 +147,7 @@ async fn download_sdk(
 	let digest = sha256_digest(reader).await?;
 
 	println!("SHA-256 digest is {:?}", digest);
-	if digest.as_ref() == app_info.app_hash.as_bytes() {
+	if digest.as_ref() == file_hash.as_bytes() {
 		println!("check ok");
 	} else {
 		println!("check fail");
@@ -260,6 +261,7 @@ enum RunStatus {
 struct RunningApp {
 	group_id: u32,
 	app_id: u32,
+	app_hash: H256,
 	running: RunStatus,
 	app_info: Option<DownloadInfo>,
 	instance1: Option<Child>,
@@ -271,7 +273,21 @@ struct RunningApp {
 	cur_ins: InstanceIndex,
 }
 
-async fn process_download_task(
+#[derive(Debug)]
+struct ProcessorInstance {
+	app_hash: H256,
+	running: RunStatus,
+	processor_info: Option<ProcessorDownloadInfo>,
+	instance: Option<Child>,
+	instance_docker: bool,
+	instance_docker_name: Option<Vec<u8>>,
+}
+#[derive(Debug)]
+struct RunningProcessor {
+	processors: HashMap<H256, ProcessorInstance>,
+}
+
+async fn app_download_task(
 	data_path: PathBuf,
 	app_info: DownloadInfo,
 	running_app: Arc<Mutex<RunningApp>>,
@@ -313,7 +329,9 @@ async fn process_download_task(
 
 		if let Ok(need_down) = need_download {
 			if need_down {
-				let result = download_sdk(data_path.clone(), app_info.clone(), url).await;
+				let file_name = std::str::from_utf8(&app_info.file_name)?;
+				let result =
+					download_sdk(data_path.clone(), file_name, app_info.app_hash, url).await;
 
 				if result.is_ok() {
 					start_flag = true;
@@ -327,7 +345,7 @@ async fn process_download_task(
 	}
 	if start_flag {
 		log::info!("===============start app for sync=================");
-		let result = process_run_task(
+		let result = app_run_task(
 			data_path,
 			app_info.clone(),
 			sync_args,
@@ -348,7 +366,192 @@ async fn process_download_task(
 	Ok(())
 }
 
-async fn process_run_task(
+async fn processor_run_task(
+	data_path: PathBuf,
+	processor_info: ProcessorDownloadInfo,
+	run_args: Option<Vec<u8>>,
+	option_args: Option<Vec<u8>>,
+	running_processor: Arc<Mutex<RunningProcessor>>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+	let run_as_docker = processor_info.is_docker_image;
+
+	let extension_args_clone;
+
+	let extension_args: Option<Vec<&str>> = if let Some(run_args) = run_args {
+		extension_args_clone = run_args.clone();
+
+		Some(
+			std::str::from_utf8(&extension_args_clone)?
+				.split(' ')
+				.into_iter()
+				.map(|arg| std::str::from_utf8(arg.as_bytes()).unwrap())
+				.collect(),
+		)
+	} else {
+		None
+	};
+
+	let app_args_clone;
+
+	let mut args: Vec<&str> = if let Some(app_args) = processor_info.args {
+		app_args_clone = app_args.clone();
+
+		std::str::from_utf8(&app_args_clone)?
+			.split(' ')
+			.into_iter()
+			.map(|arg| std::str::from_utf8(arg.as_bytes()).unwrap())
+			.collect()
+	} else {
+		Vec::new()
+	};
+
+	if let Some(extension_args) = extension_args {
+		args.extend(extension_args);
+	}
+
+	let log_file_name;
+
+	let log_file_buf;
+
+	if processor_info.log.is_none() {
+		log_file_name = std::str::from_utf8(&processor_info.file_name)?;
+	} else {
+		log_file_buf = processor_info.log.unwrap();
+
+		log_file_name = std::str::from_utf8(&log_file_buf)?;
+	}
+
+	log::info!("log_file_name:{:?}", log_file_name);
+	log::info!("args:{:?}", args);
+	let outputs = File::create(log_file_name)?;
+
+	let errors = outputs.try_clone()?;
+
+	// start new instance
+	let mut instance = None;
+	if run_as_docker {
+		let image_name = processor_info.docker_image.ok_or("docker image not exist")?;
+		let docker_image = std::str::from_utf8(&image_name)?;
+		let start_result = start_docker_container(
+			std::str::from_utf8(&processor_info.file_name)?,
+			docker_image,
+			args,
+			option_args,
+			outputs.try_clone()?,
+		)
+		.await;
+		log::info!("start docker container :{:?}", start_result);
+	} else {
+		let download_path = format!(
+			"{}/sdk/{}",
+			data_path.as_os_str().to_str().unwrap(),
+			std::str::from_utf8(&processor_info.file_name)?
+		);
+		instance = Some(
+			Command::new(download_path)
+				.stdin(Stdio::piped())
+				.stderr(Stdio::from(outputs))
+				.stdout(Stdio::from(errors))
+				.args(args)
+				.spawn()
+				.expect("failed to execute process"),
+		);
+	}
+	let mut running_processors = running_processor.lock().await;
+	let processor_instances = &mut running_processors.processors;
+	processor_instances.entry(processor_info.app_hash).and_modify(|app| {
+		app.instance = instance;
+		if run_as_docker {
+			app.instance_docker = true;
+			app.instance_docker_name = Some(processor_info.file_name);
+		} else {
+			app.instance_docker = false;
+			app.instance_docker_name = None;
+		}
+	});
+
+	log::info!("app:{:?}", running_processors);
+	Ok(())
+}
+async fn processor_task(
+	data_path: PathBuf,
+	processor_info: ProcessorDownloadInfo,
+	running_processor: Arc<Mutex<RunningProcessor>>,
+	run_args: Option<Vec<u8>>,
+	option_args: Option<Vec<u8>>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+	let run_as_docker = processor_info.is_docker_image;
+	let mut start_flag = false;
+
+	if run_as_docker {
+		log::info!("===========Download app from docker hub and run the application as a container=========");
+		if let Some(image) = processor_info.clone().docker_image {
+			let docker_image = std::str::from_utf8(&image)?;
+			let mut exist_docker_image = check_docker_image_exist(docker_image).await?;
+			if !exist_docker_image {
+				download_docker_image(docker_image).await?;
+				exist_docker_image = check_docker_image_exist(docker_image).await?;
+			}
+			if exist_docker_image {
+				//Start docker container
+				start_flag = true;
+			}
+		}
+	} else {
+		log::info!(
+			"===========Download app from the web and run the application as a process========="
+		);
+		let url = std::str::from_utf8(&processor_info.url)?;
+
+		let download_path = format!(
+			"{}/sdk/{}",
+			data_path.as_os_str().to_str().ok_or("invalid data_path")?,
+			std::str::from_utf8(&processor_info.file_name)?
+		);
+
+		let need_download = need_download(&download_path, processor_info.app_hash).await;
+		log::info!("need_download:{:?}", need_download);
+
+		if let Ok(need_down) = need_download {
+			if need_down {
+				let file_name = std::str::from_utf8(&processor_info.file_name)?;
+				let result =
+					download_sdk(data_path.clone(), file_name, processor_info.app_hash, url).await;
+
+				if result.is_ok() {
+					start_flag = true;
+				} else {
+					log::info!("download processor client error:{:?}", result);
+				}
+			} else {
+				start_flag = true;
+			}
+		}
+	}
+	let status = if start_flag {
+		log::info!("===============run processor=================");
+		let result = processor_run_task(
+			data_path,
+			processor_info.clone(),
+			run_args,
+			option_args,
+			running_processor.clone(),
+		)
+		.await;
+		log::info!("start processor result:{:?}", result);
+		RunStatus::Downloaded
+	} else {
+		RunStatus::Pending
+	};
+	let mut running_processors = running_processor.lock().await;
+	let processor_instances = &mut running_processors.processors;
+	processor_instances
+		.entry(processor_info.app_hash)
+		.and_modify(|instance| instance.running = status);
+	Ok(())
+}
+
+async fn app_run_task(
 	data_path: PathBuf,
 	app_info: DownloadInfo,
 	run_args: Option<Vec<u8>>,
@@ -412,16 +615,16 @@ async fn process_run_task(
 
 	let mut app = running_app.lock().await;
 
-	let (old_instance, instance_docker, op_docker_name) = if app.cur_ins == InstanceIndex::Instance1
-	{
-		let is_docker_instance = app.instance1_docker;
-		let top_docker_name = app.instance1_docker_name.clone();
-		(&mut app.instance1, is_docker_instance, top_docker_name)
-	} else {
-		let is_docker_instance = app.instance2_docker;
-		let top_docker_name = app.instance2_docker_name.clone();
-		(&mut app.instance2, is_docker_instance, top_docker_name)
-	};
+	let (old_instance, instance_docker, op_docker_name, cur_ins) =
+		if app.cur_ins == InstanceIndex::Instance1 {
+			let is_docker_instance = app.instance1_docker;
+			let top_docker_name = app.instance1_docker_name.clone();
+			(&mut app.instance1, is_docker_instance, top_docker_name, 1)
+		} else {
+			let is_docker_instance = app.instance2_docker;
+			let top_docker_name = app.instance2_docker_name.clone();
+			(&mut app.instance2, is_docker_instance, top_docker_name, 2)
+		};
 	// stop old instance
 	if instance_docker {
 		//reomve docker container
@@ -433,7 +636,11 @@ async fn process_run_task(
 		if let Some(ref mut old_instance) = old_instance {
 			old_instance.kill()?;
 			let kill_result = old_instance.wait()?;
-			log::info!("kill old instance:{:?}", kill_result);
+			log::info!("kill old instance:{:?}:{:?}", cur_ins, kill_result);
+			match kill_result.code() {
+				Some(code) => log::info!("Exited with status code: {code}"),
+				None => log::info!("Process terminated by signal"),
+			}
 		}
 	}
 	// start new instance
@@ -484,9 +691,9 @@ async fn process_run_task(
 					let kill_result = other_instance.wait()?;
 					log::info!("kill instance2:{:?}", kill_result);
 				}
-				app.instance1 = instance;
 				app.instance2 = None;
 			}
+			app.instance1 = instance;
 			app.cur_ins = InstanceIndex::Instance2;
 		} else {
 			if app.instance1_docker {
@@ -505,9 +712,9 @@ async fn process_run_task(
 					let kill_result = other_instance.wait()?;
 					log::info!("kill instance1:{:?}", kill_result);
 				}
-				app.instance2 = instance;
 				app.instance1 = None;
 			}
+			app.instance2 = instance;
 			app.cur_ins = InstanceIndex::Instance1;
 		}
 	} else {
@@ -535,16 +742,28 @@ async fn process_run_task(
 	Ok(())
 }
 
+async fn get_offchain_storage<Block, TBackend>(
+	offchain_storage: Option<TBackend::OffchainStorage>,
+	args: &[u8],
+) -> Option<Vec<u8>>
+where
+	Block: BlockT,
+	TBackend: 'static + sc_client_api::backend::Backend<Block> + Send,
+{
+	if let Some(storage) = offchain_storage {
+		storage.get(&STORAGE_PREFIX, args)
+	} else {
+		None
+	}
+}
+
 async fn handle_new_best_parachain_head<P, Block, TBackend>(
 	validation_data: PersistedValidationData,
-	height: RelayBlockNumber,
 	parachain: &P,
 	keystore: KeystorePtr,
-	relay_chain: impl RelayChainInterface + Clone,
-	p_hash: H256,
-	para_id: ParaId,
 	data_path: PathBuf,
 	running_app: Arc<Mutex<RunningApp>>,
+	running_processor: Arc<Mutex<RunningProcessor>>,
 	backend: Arc<TBackend>,
 ) -> Result<(), Box<dyn Error>>
 where
@@ -556,17 +775,6 @@ where
 {
 	let offchain_storage = backend.offchain_storage();
 
-	let (mut run_args, mut sync_args, mut option_args) =
-		if let Some(storage) = offchain_storage.clone() {
-			let prefix = &STORAGE_PREFIX;
-			(
-				storage.get(prefix, RUN_ARGS_KEY),
-				storage.get(prefix, SYNC_ARGS_KEY),
-				storage.get(prefix, OPTION_ARGS_KEY),
-			)
-		} else {
-			(None, None, None)
-		};
 	// Check if there is a download task
 	let head = validation_data.clone().parent_head.0;
 
@@ -579,10 +787,62 @@ where
 
 	let xx = keystore.sr25519_public_keys(sp_application_crypto::key_types::AURA)[0];
 
+	// Processor client process
+	let ip_address = get_local_info::get_pc_ipv4();
+
+	log::info!("ip_address:{:?}", ip_address);
+
+	let processor_infos: Vec<ProcessorDownloadInfo> =
+		parachain.runtime_api().processor_run(hash, xx.into())?;
+
+	log::info!("processor download info:{:?}", processor_infos);
+
+	{
+		let mut running_processors = running_processor.lock().await;
+		let processors = &mut running_processors.processors;
+		for processor_info in processor_infos {
+			let app_hash = processor_info.app_hash;
+			let processor = processors.entry(app_hash).or_insert(ProcessorInstance {
+				app_hash,
+				running: RunStatus::Pending,
+				processor_info: Some(processor_info.clone()),
+				instance: None,
+				instance_docker: false,
+				instance_docker_name: None,
+			});
+			let run_status = &processor.running;
+
+			if *run_status == RunStatus::Pending {
+				processor.running = RunStatus::Downloading;
+				let app_hash = processor.app_hash;
+				let p_run_args_key =
+					format!("{}:{}", P_RUN_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
+				let p_option_args_key =
+					format!("{}:{}", P_OPTION_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
+				let run_args = get_offchain_storage::<_, TBackend>(
+					offchain_storage.clone(),
+					p_run_args_key.as_bytes(),
+				)
+				.await;
+				let option_args = get_offchain_storage::<_, TBackend>(
+					offchain_storage.clone(),
+					p_option_args_key.as_bytes(),
+				)
+				.await;
+				tokio::spawn(processor_task(
+					data_path.clone(),
+					processor_info,
+					running_processor.clone(),
+					run_args,
+					option_args,
+				));
+			}
+		}
+	}
+	//Layer2 client process
 	let should_load: Option<DownloadInfo> = parachain.runtime_api().shuld_load(hash, xx.into())?;
 	log::info!("app download info of sequencer's group:{:?}", should_load);
 
-	let number = (*parachain_head.number()).into();
 	{
 		let mut app = running_app.lock().await;
 
@@ -592,40 +852,36 @@ where
 			Some(app_info) => {
 				let new_group = app_info.group;
 				let app_id = app_info.app_id;
+				let app_hash = app_info.app_hash;
 				let run_status = &app.running;
 				if old_group_id != new_group && *run_status == RunStatus::Pending {
-					if sync_args == None {
-						sync_args = if let Some(storage) = offchain_storage.clone() {
-							let prefix = &STORAGE_PREFIX;
-							let sync_args = format!(
-								"{}:{}",
-								std::str::from_utf8(SYNC_ARGS_KEY).unwrap(),
-								app_id
-							);
-							storage.get(prefix, sync_args.as_bytes())
-						} else {
-							None
-						};
-					}
-					log::info!("offchain_storage of sync_args:{:?}", sync_args);
-					if option_args == None {
-						option_args = if let Some(storage) = offchain_storage.clone() {
-							let prefix = &STORAGE_PREFIX;
-							let option_args = format!(
-								"{}:{}",
-								std::str::from_utf8(OPTION_ARGS_KEY).unwrap(),
-								app_id
-							);
+					let sync_args_key =
+						format!("{}:{}", SYNC_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
 
-							storage.get(prefix, option_args.as_bytes())
-						} else {
-							None
-						};
-					}
+					let option_args_key =
+						format!("{}:{}", OPTION_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
+
+					let sync_args = get_offchain_storage::<_, TBackend>(
+						offchain_storage.clone(),
+						sync_args_key.as_bytes(),
+					)
+					.await;
+
+					let option_args = get_offchain_storage::<_, TBackend>(
+						offchain_storage.clone(),
+						option_args_key.as_bytes(),
+					)
+					.await;
+
+					log::info!("offchain_storage of sync_args:{:?}", sync_args);
+
 					log::info!("offchain_storage of option_args:{:?}", option_args);
+
 					app.running = RunStatus::Downloading;
+
 					app.app_id = app_id;
-					tokio::spawn(process_download_task(
+					app.app_hash = app_hash;
+					tokio::spawn(app_download_task(
 						data_path.clone(),
 						app_info,
 						running_app.clone(),
@@ -643,34 +899,30 @@ where
 	if should_run {
 		let mut app = running_app.lock().await;
 		let run_status = &app.running;
-		let app_id = app.app_id;
+		let app_hash = app.app_hash;
 		if let Some(app_info) = app.app_info.clone() {
 			if *run_status == RunStatus::Downloaded {
 				log::info!("run:{:?}", app);
-				if run_args == None {
-					run_args = if let Some(storage) = offchain_storage.clone() {
-						let prefix = &STORAGE_PREFIX;
-						let run_args =
-							format!("{}:{}", std::str::from_utf8(RUN_ARGS_KEY).unwrap(), app_id);
+				let run_args_key =
+					format!("{}:{}", RUN_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
 
-						storage.get(prefix, run_args.as_bytes())
-					} else {
-						None
-					};
-				}
-				if option_args == None {
-					option_args = if let Some(storage) = offchain_storage {
-						let prefix = &STORAGE_PREFIX;
-						let option_args =
-							format!("{}:{}", std::str::from_utf8(OPTION_ARGS_KEY).unwrap(), app_id);
+				let option_args_key =
+					format!("{}:{}", OPTION_ARGS_KEY, HexDisplay::from(&app_hash.as_bytes()));
 
-						storage.get(prefix, option_args.as_bytes())
-					} else {
-						None
-					};
-				}
+				let run_args = get_offchain_storage::<_, TBackend>(
+					offchain_storage.clone(),
+					run_args_key.as_bytes(),
+				)
+				.await;
+
+				let option_args = get_offchain_storage::<_, TBackend>(
+					offchain_storage.clone(),
+					option_args_key.as_bytes(),
+				)
+				.await;
+				log::info!("offchain_storage of run_args:{:?}", run_args);
 				log::info!("offchain_storage of option_args:{:?}", option_args);
-				tokio::spawn(process_run_task(
+				tokio::spawn(app_run_task(
 					data_path,
 					app_info,
 					run_args,
@@ -722,6 +974,18 @@ async fn relay_chain_notification<P, R, Block, TBackend>(
 	<Block::Header as HeaderT>::Number: Into<u32>,
 	TBackend: 'static + sc_client_api::backend::Backend<Block> + Send,
 {
+	// let mut stop = false;
+	// loop{
+	// 	if !stop{
+	// 		let download_info = DownloadInfo{
+	// 			file_name:"magport-node-b".into(),
+	// 			app_hash:H256::from_str("9b64d63367328fd980b6e88af0dc46c437bf2c3906a9b000eccd66a6e4599938").
+	// unwrap(), 			..Default::default()
+	// 		};
+	// 		download_sdk(data_path.clone(), download_info, "http://43.134.60.202:88/static").await;
+	// 		stop = true;
+	// 	}
+	// }
 	let new_best_heads = match new_best_heads(relay_chain.clone(), para_id).await {
 		Ok(best_heads_stream) => best_heads_stream.fuse(),
 		Err(_err) => {
@@ -732,6 +996,7 @@ async fn relay_chain_notification<P, R, Block, TBackend>(
 	let runing_app = Arc::new(Mutex::new(RunningApp {
 		group_id: 0xFFFFFFFF,
 		app_id: 0xFFFFFFFF,
+		app_hash: Default::default(),
 		running: RunStatus::Pending,
 		app_info: None,
 		instance1: None,
@@ -742,12 +1007,13 @@ async fn relay_chain_notification<P, R, Block, TBackend>(
 		instance2_docker_name: None,
 		cur_ins: InstanceIndex::Instance1,
 	}));
+	let runing_processor = Arc::new(Mutex::new(RunningProcessor { processors: HashMap::new() }));
 	loop {
 		select! {
 			h = new_best_heads.next() => {
 				match h {
-					Some((height, head, hash)) => {
-						let _ = handle_new_best_parachain_head(head,height, &*parachain,keystore.clone(), relay_chain.clone(), hash, para_id, data_path.clone(), runing_app.clone(), backend.clone()).await;
+					Some((_height, head, _hash)) => {
+						let _ = handle_new_best_parachain_head(head, &*parachain,keystore.clone(), data_path.clone(), runing_app.clone(),runing_processor.clone(), backend.clone()).await;
 					},
 					None => {
 						return;
