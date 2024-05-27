@@ -38,6 +38,7 @@ use core::marker::PhantomData;
 pub trait WeightInfo {
 	fn set_group_metric() -> Weight;
 	fn benchmark_trigger_group(s: u32, n: u32, ) -> Weight;
+	fn register_processor() -> Weight;
 }
 
 /// Weights for pallet_template using the Substrate node and recommended hardware.
@@ -82,6 +83,19 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(3))
 			.saturating_add(T::DbWeight::get().writes(2))
 	}
+
+	/// Storage: `SequencerGroupingPallet::ProcessorInfo` (r:1 w:1)
+	/// Proof: `SequencerGroupingPallet::ProcessorInfo` (`max_values`: Some(1), `max_size`: Some(891), added: 1386, mode: `MaxEncodedLen`)
+	fn register_processor() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `55`
+		//  Estimated: `2376`
+		// Minimum execution time: 5_000_000 picoseconds.
+		Weight::from_parts(5_000_000, 0)
+			.saturating_add(Weight::from_parts(0, 2376))
+			.saturating_add(T::DbWeight::get().reads(1))
+			.saturating_add(T::DbWeight::get().writes(1))
+	}
 }
 
 // For backwards compatibility and tests
@@ -124,5 +138,18 @@ impl WeightInfo for () {
 			.saturating_add(Weight::from_parts(253_149, 0).saturating_mul(n.into()))
 			.saturating_add(RocksDbWeight::get().reads(3))
 			.saturating_add(RocksDbWeight::get().writes(2))
+	}
+
+	/// Storage: `SequencerGroupingPallet::ProcessorInfo` (r:1 w:1)
+	/// Proof: `SequencerGroupingPallet::ProcessorInfo` (`max_values`: Some(1), `max_size`: Some(891), added: 1386, mode: `MaxEncodedLen`)
+	fn register_processor() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `55`
+		//  Estimated: `2376`
+		// Minimum execution time: 5_000_000 picoseconds.
+		Weight::from_parts(5_000_000, 0)
+			.saturating_add(Weight::from_parts(0, 2376))
+			.saturating_add(RocksDbWeight::get().reads(1))
+			.saturating_add(RocksDbWeight::get().writes(1))
 	}
 }
