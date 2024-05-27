@@ -1,4 +1,4 @@
-use crate::mock::*;
+use crate::{mock::*, AppClient};
 use frame_support::assert_ok;
 use sp_core::H256;
 use sp_runtime::BoundedVec;
@@ -22,18 +22,31 @@ fn it_works_for_default_value() {
 #[test]
 fn register_app() {
 	new_test_ext().execute_with(|| {
+		let consensus_client = AppClient {
+			app_hash: H256::from([1; 32]),
+			file_name: BoundedVec::try_from("test".as_bytes().to_vec()).unwrap(),
+			size: 123,
+			args: Some(BoundedVec::try_from("--chain dev".as_bytes().to_vec()).unwrap()),
+			log: None,
+			is_docker_image: None,
+			docker_image: None,
+		};
+		let batch_client = AppClient {
+			app_hash: H256::from([1; 32]),
+			file_name: BoundedVec::try_from("test".as_bytes().to_vec()).unwrap(),
+			size: 123,
+			args: Some(BoundedVec::try_from("--chain dev".as_bytes().to_vec()).unwrap()),
+			log: None,
+			is_docker_image: None,
+			docker_image: None,
+		};
 		assert_ok!(ContainerModule::register_app(
 			RuntimeOrigin::signed(1),
-			H256::from([1; 32]),
 			BoundedVec::try_from("test".as_bytes().to_vec()).unwrap(),
-			BoundedVec::try_from("test".as_bytes().to_vec()).unwrap(),
-			123,
-			Some(BoundedVec::try_from("--chain dev".as_bytes().to_vec()).unwrap()),
-			None,
-			None,
-			None,
+			Box::new(consensus_client),
+			Box::new(batch_client),
 		));
 		let app = ContainerModule::appinfo_map(1).unwrap();
-		assert_eq!(app.app_hash, H256::from([1; 32]));
+		assert_eq!(app.consensus_client.app_hash, H256::from([1; 32]));
 	});
 }

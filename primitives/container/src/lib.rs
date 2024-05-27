@@ -17,6 +17,18 @@ pub struct DownloadInfo {
 	pub docker_image: Option<Vec<u8>>,
 }
 
+#[derive(Debug, Clone, TypeInfo, Encode, Decode, Default)]
+pub struct ProcessorDownloadInfo {
+	pub app_hash: H256,
+	pub file_name: Vec<u8>,
+	pub size: u32,
+	pub url: Vec<u8>,
+	pub args: Option<Vec<u8>>,
+	pub log: Option<Vec<u8>>,
+	pub is_docker_image: bool,
+	pub docker_image: Option<Vec<u8>>,
+}
+
 sp_api::decl_runtime_apis! {
 	#[api_version(2)]
 	pub trait ContainerRuntimeApi<AuthorityId> where
@@ -26,5 +38,6 @@ sp_api::decl_runtime_apis! {
 		fn should_run()-> bool;
 		fn get_group_id(author:AuthorityId) ->u32;
 		fn get_groups()->Vec<u32>;
+		fn processor_run(author:AuthorityId)->Vec<ProcessorDownloadInfo>;
 	}
 }

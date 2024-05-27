@@ -53,7 +53,7 @@ use pallet_sequencer_grouping::SimpleRandomness;
 use pallet_sequencer_staking::WeightInfo;
 use pallet_xcm::{EnsureXcm, IsVoiceOfBody};
 use parachains_common::message_queue::{NarrowOriginToSibling, ParaIdToSibling};
-use primitives_container::DownloadInfo;
+use primitives_container::{DownloadInfo, ProcessorDownloadInfo};
 pub use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::ConstU128;
 use sp_runtime::DispatchErrorWithPostInfo;
@@ -808,6 +808,10 @@ impl_runtime_apis! {
 		}
 		fn should_run()-> bool {
 			ContainerPallet::should_run()
+		}
+
+		fn processor_run(author:AccountId32)->Vec<ProcessorDownloadInfo> {
+			ContainerPallet::processor_run(author)
 		}
 	}
 

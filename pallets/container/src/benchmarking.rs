@@ -25,16 +25,32 @@ benchmarks! {
 		let file_size = 123;
 		let args = Some(BoundedVec::try_from("--chain dev".as_bytes().to_vec()).unwrap());
 		let log = Some(BoundedVec::try_from("aaaa".as_bytes().to_vec()).unwrap());
+		let consensus_client = AppClient{
+			app_hash: hash,
+			file_name:file_name.clone(),
+			size: file_size,
+			args:args.clone(),
+			log:log.clone(),
+			is_docker_image: None,
+			docker_image: None,
+		};
+		let batch_client = AppClient{
+			app_hash: hash,
+			file_name,
+			size: file_size,
+			args,
+			log,
+			is_docker_image: None,
+			docker_image: None,
+		};
 		let caller: T::AccountId = whitelisted_caller();
-	}: _(RawOrigin::Signed(caller),             hash,
+	}: _(RawOrigin::Signed(caller),
 	project_name,
-	file_name,
-	file_size,
-	args,
-	log)
+	Box::new(consensus_client),
+	Box::new(batch_client))
 	verify {
 		let app = APPInfoMap::<T>::get(1).unwrap();
-		assert_eq!(app.app_hash, H256::from([1; 32]));
+		assert_eq!(app.consensus_client.app_hash, H256::from([1; 32]));
 	}
 }
 
