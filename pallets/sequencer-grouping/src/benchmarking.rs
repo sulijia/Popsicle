@@ -5,8 +5,10 @@ use super::*;
 #[allow(unused)]
 use crate::Pallet as SequencerGrouping;
 use frame_benchmarking::{account, benchmarks, impl_benchmark_test_suite};
+use frame_support::BoundedVec;
 use frame_support::pallet_prelude::Get;
 use frame_system::RawOrigin;
+use sp_std::vec;
 use sp_std::vec::Vec;
 
 benchmarks! {
@@ -33,6 +35,10 @@ benchmarks! {
 		let round_index = 1u32;
 
 	}: _(RawOrigin::Root, candidates, starting_block, round_index)
+
+	register_processor {
+		let ip_address: BoundedVec<u8, T::MaxLengthIP> = BoundedVec::from(BoundedVec::try_from(vec![1u8; 15]).unwrap());
+	}: _(RawOrigin::Signed(account("processor", 0, 0)), ip_address)
 }
 
 impl_benchmark_test_suite!(SequencerGrouping, crate::mock::new_test_ext(), crate::mock::Test,);

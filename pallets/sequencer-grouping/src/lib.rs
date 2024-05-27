@@ -44,6 +44,14 @@ pub mod pallet {
 		/// Maximum sequencer group number
 		#[pallet::constant]
 		type MaxGroupNumber: Get<u32>;
+
+		/// Maximum length of IP
+		#[pallet::constant]
+		type MaxLengthIP: Get<u32>;
+
+		/// Maximum number of running app
+		#[pallet::constant]
+		type MaxRunningAPP: Get<u32>;
 	}
 
 	pub trait SequencerGroup<AccountId, BlockNumber> {
@@ -87,6 +95,11 @@ pub mod pallet {
 	#[pallet::getter(fn max_group_number)]
 	pub(super) type GroupNumber<T: Config> = StorageValue<_, u32, ValueQuery>;
 
+	#[pallet::storage]
+	#[pallet::getter(fn processor_info)]
+	pub(crate) type ProcessorInfo<T: Config> = StorageValue<_, BoundedVec<
+		(T::AccountId, BoundedVec<u8, T::MaxLengthIP>, BoundedVec<u32, T::MaxRunningAPP>), T::MaxRunningAPP>, ValueQuery>;
+
 	#[pallet::genesis_config]
 	pub struct GenesisConfig<T: Config> {
 		pub group_size: u32,
@@ -114,6 +127,8 @@ pub mod pallet {
 		GroupSizeTooLarge,
 		GroupNumberTooLarge,
 		AccountNotInGroup,
+		TooManyProcessors,
+		NoProcessors,
 	}
 
 	#[pallet::event]
@@ -162,6 +177,31 @@ pub mod pallet {
 			);
 			Ok(())
 		}
+
+		#[pallet::call_index(2)]
+		#[pallet::weight(T::WeightInfo::register_processor())]
+		pub fn register_processor(
+			origin: OriginFor<T>,
+			ip_address: BoundedVec<u8, T::MaxLengthIP>,
+		) -> DispatchResult {
+			let who = ensure_signed(origin)?;
+			let mut processor_info = crate::pallet::ProcessorInfo::<T>::get();
+
+			if let Some(existing) = processor_info.iter_mut().find(|(account, _, _)| account == &who) {
+				if existing.1 == ip_address {
+					return Ok(());
+				}
+				existing.1 = ip_address;
+			} else {
+				let processor = (who.clone(), ip_address, BoundedVec::new());
+				processor_info
+					.try_push(processor)
+					.map_err(|_| crate::pallet::Error::<T>::TooManyProcessors)?;
+			}
+
+			crate::pallet::ProcessorInfo::<T>::put(&processor_info);
+			Ok(())
+		}
 	}
 
 	pub struct SimpleRandomness<T>(PhantomData<T>);
@@ -191,6 +231,41 @@ pub mod pallet {
 			}
 
 			accounts
+		}
+
+		pub fn assign_processors_to_groups(group_number: u32) -> DispatchResult {
+			let mut processor_info = ProcessorInfo::<T>::get();
+			let processor_count = processor_info.len() as u32;
+
+			// 如果 processor_info 为空，则直接返回
+			if processor_count == 0 {
+				return Err(Error::<T>::NoProcessors.into());
+			}
+
+			for (_, _, groups) in &mut processor_info {
+				groups.clear();
+			}
+
+			for group_id in 0..=group_number - 1 {
+				let processor_index = group_id % processor_count;
+				let processor = &mut processor_info[processor_index as usize];
+
+				if !processor.2.contains(&group_id) {
+					processor.2.try_push(group_id).map_err(|_| Error::<T>::TooManyProcessors)?;
+				}
+			}
+
+			ProcessorInfo::<T>::put(processor_info);
+			Ok(())
+		}
+
+		pub fn get_group_ids(account: T::AccountId) -> Vec<u32> {
+			let processor_info = ProcessorInfo::<T>::get();
+			if let Some((_, _, group_ids)) = processor_info.iter().find(|(acc, _, _)| *acc == account) {
+				group_ids.clone().into_inner()
+			} else {
+				Vec::new()
+			}
 		}
 	}
 
@@ -227,6 +302,8 @@ pub mod pallet {
 				groups.try_push(group).expect("can't reach here");
 			}
 			GroupMembers::<T>::put(&groups);
+
+			Pallet::<T>::assign_processors_to_groups(group_number)?;
 
 			NextRoundStorage::<T>::put(NextRound { starting_block, round_index });
 			Self::deposit_event(Event::SequencerGroupUpdated { starting_block, round_index });
