@@ -5,11 +5,9 @@ use super::*;
 #[allow(unused)]
 use crate::Pallet as SequencerGrouping;
 use frame_benchmarking::{account, benchmarks, impl_benchmark_test_suite};
-use frame_support::BoundedVec;
-use frame_support::pallet_prelude::Get;
+use frame_support::{pallet_prelude::Get, BoundedVec};
 use frame_system::RawOrigin;
-use sp_std::vec;
-use sp_std::vec::Vec;
+use sp_std::{vec, vec::Vec};
 
 benchmarks! {
 	set_group_metric {

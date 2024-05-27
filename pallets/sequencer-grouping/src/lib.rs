@@ -97,8 +97,14 @@ pub mod pallet {
 
 	#[pallet::storage]
 	#[pallet::getter(fn processor_info)]
-	pub(crate) type ProcessorInfo<T: Config> = StorageValue<_, BoundedVec<
-		(T::AccountId, BoundedVec<u8, T::MaxLengthIP>, BoundedVec<u32, T::MaxRunningAPP>), T::MaxRunningAPP>, ValueQuery>;
+	pub(crate) type ProcessorInfo<T: Config> = StorageValue<
+		_,
+		BoundedVec<
+			(T::AccountId, BoundedVec<u8, T::MaxLengthIP>, BoundedVec<u32, T::MaxRunningAPP>),
+			T::MaxRunningAPP,
+		>,
+		ValueQuery,
+	>;
 
 	#[pallet::genesis_config]
 	pub struct GenesisConfig<T: Config> {
@@ -187,7 +193,9 @@ pub mod pallet {
 			let who = ensure_signed(origin)?;
 			let mut processor_info = crate::pallet::ProcessorInfo::<T>::get();
 
-			if let Some(existing) = processor_info.iter_mut().find(|(account, _, _)| account == &who) {
+			if let Some(existing) =
+				processor_info.iter_mut().find(|(account, _, _)| account == &who)
+			{
 				if existing.1 == ip_address {
 					return Ok(());
 				}
@@ -261,7 +269,9 @@ pub mod pallet {
 
 		pub fn get_group_ids(account: T::AccountId) -> Vec<u32> {
 			let processor_info = ProcessorInfo::<T>::get();
-			if let Some((_, _, group_ids)) = processor_info.iter().find(|(acc, _, _)| *acc == account) {
+			if let Some((_, _, group_ids)) =
+				processor_info.iter().find(|(acc, _, _)| *acc == account)
+			{
 				group_ids.clone().into_inner()
 			} else {
 				Vec::new()

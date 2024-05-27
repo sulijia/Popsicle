@@ -318,7 +318,7 @@ impl<T: Config> Pallet<T> {
 	}
 
 	pub fn processor_run(author: T::AccountId) -> Vec<ProcessorDownloadInfo> {
-		let processors = vec![1, 2];
+		let processors = <pallet_sequencer_grouping::Pallet<T>>::get_group_ids(author);
 		let mut download_infos: Vec<ProcessorDownloadInfo> = Vec::new();
 		if Self::get_groups().len() == 0 {
 			return download_infos;
