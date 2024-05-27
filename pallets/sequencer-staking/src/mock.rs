@@ -132,6 +132,8 @@ impl pallet_sequencer_grouping::Config for Test {
 	type Randomness = pallet_sequencer_grouping::SimpleRandomness<Self>;
 	type MaxGroupSize = ConstU32<5u32>;
 	type MaxGroupNumber = ConstU32<10u32>;
+	type MaxLengthIP = ConstU32<15u32>;
+	type MaxRunningAPP = ConstU32<20u32>;
 }
 
 parameter_types! {

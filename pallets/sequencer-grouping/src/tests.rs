@@ -4,6 +4,7 @@ use crate::{
 	Error, Event, GroupMembers, NextRound, SequencerGroup,
 };
 use frame_support::{assert_noop, assert_ok, pallet_prelude::Get};
+use sp_core::{bounded::BoundedVec, bounded_vec};
 use sp_runtime::{testing::H256, traits::BadOrigin};
 
 #[test]
@@ -74,6 +75,13 @@ fn trigger_group_works() {
 		let parent_hash = H256::from_low_u64_be(12345);
 		frame_system::Pallet::<Test>::set_parent_hash(parent_hash);
 
+		let ip_address: BoundedVec<u8, <Test as crate::Config>::MaxLengthIP> =
+			bounded_vec![127, 0, 0, 1];
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(1),
+			ip_address.clone()
+		));
+
 		assert_ok!(SequencerGrouping::set_group_metric(RuntimeOrigin::root(), 2, 3));
 		assert_ok!(SequencerGrouping::trigger_group(vec![1, 2, 3, 4, 5, 6], 20, 3));
 		System::assert_last_event(RuntimeEvent::SequencerGrouping(Event::SequencerGroupUpdated {
@@ -101,6 +109,12 @@ fn account_in_group_works() {
 		let parent_hash = H256::from_low_u64_be(12345);
 		frame_system::Pallet::<Test>::set_parent_hash(parent_hash);
 
+		let ip_address: BoundedVec<u8, <Test as crate::Config>::MaxLengthIP> =
+			bounded_vec![127, 0, 0, 1];
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(1),
+			ip_address.clone()
+		));
 		assert_ok!(SequencerGrouping::set_group_metric(RuntimeOrigin::root(), 2, 3));
 		assert_ok!(SequencerGrouping::trigger_group(vec![1, 2, 3, 4, 5, 6], 1, 1));
 		println!("Group Members: {:?}", GroupMembers::<Test>::get());
@@ -121,6 +135,13 @@ fn account_in_group_fails() {
 		let parent_hash = H256::from_low_u64_be(12345);
 		frame_system::Pallet::<Test>::set_parent_hash(parent_hash);
 
+		let ip_address: BoundedVec<u8, <Test as crate::Config>::MaxLengthIP> =
+			bounded_vec![127, 0, 0, 1];
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(1),
+			ip_address.clone()
+		));
+
 		assert_ok!(SequencerGrouping::set_group_metric(RuntimeOrigin::root(), 2, 3));
 		assert_ok!(SequencerGrouping::trigger_group(vec![1, 2, 3, 4, 5, 6], 1, 1));
 		println!("Group Members: {:?}", GroupMembers::<Test>::get());
@@ -136,6 +157,13 @@ fn all_group_ids_works() {
 		let parent_hash = H256::from_low_u64_be(12345);
 		frame_system::Pallet::<Test>::set_parent_hash(parent_hash);
 
+		let ip_address: BoundedVec<u8, <Test as crate::Config>::MaxLengthIP> =
+			bounded_vec![127, 0, 0, 1];
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(1),
+			ip_address.clone()
+		));
+
 		assert_ok!(SequencerGrouping::set_group_metric(RuntimeOrigin::root(), 2, 3));
 		assert_ok!(SequencerGrouping::trigger_group(vec![1, 2, 3, 4, 5, 6], 15, 2));
 		println!("Group Members: {:?}", GroupMembers::<Test>::get());
@@ -148,6 +176,13 @@ fn all_group_ids_works() {
 fn get_next_round_works() {
 	new_test_ext().execute_with(|| {
 		assert_ok!(SequencerGrouping::set_group_metric(RuntimeOrigin::root(), 2, 3));
+
+		let ip_address: BoundedVec<u8, <Test as crate::Config>::MaxLengthIP> =
+			bounded_vec![127, 0, 0, 1];
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(1),
+			ip_address.clone()
+		));
 		assert_ok!(SequencerGrouping::trigger_group(vec![1, 2, 3, 4, 5, 6], 16, 3));
 		println!("Group Members: {:?}", GroupMembers::<Test>::get());
 
@@ -155,5 +190,132 @@ fn get_next_round_works() {
 			SequencerGrouping::next_round(),
 			NextRound { starting_block: 16, round_index: 3 }
 		);
+	});
+}
+
+#[test]
+fn register_new_processor_works() {
+	new_test_ext().execute_with(|| {
+		let account_id: u64 = 1;
+		let ip_address: BoundedVec<u8, <Test as crate::Config>::MaxLengthIP> =
+			bounded_vec![127, 0, 0, 1];
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(account_id),
+			ip_address.clone()
+		));
+
+		let processor_info = SequencerGrouping::processor_info();
+		assert_eq!(processor_info.len(), 1);
+		assert_eq!(processor_info[0].0, account_id);
+		assert_eq!(processor_info[0].1, ip_address);
+	});
+}
+
+#[test]
+fn update_existing_processor_ip_works() {
+	new_test_ext().execute_with(|| {
+		let account_id: u64 = 1;
+		let ip_address: BoundedVec<u8, <Test as crate::Config>::MaxLengthIP> =
+			bounded_vec![127, 0, 0, 1];
+		let new_ip_address: BoundedVec<u8, <Test as crate::Config>::MaxLengthIP> =
+			bounded_vec![192, 168, 0, 1];
+
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(account_id),
+			ip_address.clone()
+		));
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(account_id),
+			new_ip_address.clone()
+		));
+
+		let processor_info = SequencerGrouping::processor_info();
+		assert_eq!(processor_info.len(), 1);
+		assert_eq!(processor_info[0].0, account_id);
+		assert_eq!(processor_info[0].1, new_ip_address);
+	});
+}
+
+#[test]
+fn do_nothing_if_ip_unchanged() {
+	new_test_ext().execute_with(|| {
+		let account_id: u64 = 1;
+		let ip_address: BoundedVec<u8, <Test as crate::Config>::MaxLengthIP> =
+			bounded_vec![127, 0, 0, 1];
+
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(account_id),
+			ip_address.clone()
+		));
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(account_id),
+			ip_address.clone()
+		));
+
+		let processor_info = SequencerGrouping::processor_info();
+		assert_eq!(processor_info.len(), 1);
+		assert_eq!(processor_info[0].0, account_id);
+		assert_eq!(processor_info[0].1, ip_address);
+	});
+}
+
+#[test]
+fn too_many_processors_fails() {
+	new_test_ext().execute_with(|| {
+		let ip_address: BoundedVec<u8, <Test as crate::Config>::MaxLengthIP> =
+			bounded_vec![127, 0, 0, 1];
+		let max_running_app: u32 = <Test as crate::Config>::MaxRunningAPP::get();
+
+		for i in 1..=max_running_app {
+			assert_ok!(SequencerGrouping::register_processor(
+				RuntimeOrigin::signed(i as u64),
+				ip_address.clone()
+			));
+		}
+
+		assert_noop!(
+			SequencerGrouping::register_processor(
+				RuntimeOrigin::signed(max_running_app as u64 + 1),
+				ip_address.clone()
+			),
+			Error::<Test>::TooManyProcessors
+		);
+
+		let processor_info = SequencerGrouping::processor_info();
+		assert_eq!(processor_info.len(), max_running_app as usize);
+	});
+}
+
+#[test]
+fn account_with_group_ids_works() {
+	new_test_ext().execute_with(|| {
+		let ip_address: BoundedVec<u8, <Test as crate::Config>::MaxLengthIP> =
+			bounded_vec![127, 0, 0, 1];
+
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(1),
+			ip_address.clone()
+		));
+		assert_ok!(SequencerGrouping::register_processor(
+			RuntimeOrigin::signed(2),
+			ip_address.clone()
+		));
+
+		System::set_block_number(10);
+		let parent_hash = H256::from_low_u64_be(12345);
+		frame_system::Pallet::<Test>::set_parent_hash(parent_hash);
+
+		assert_ok!(SequencerGrouping::set_group_metric(RuntimeOrigin::root(), 2, 3));
+		assert_ok!(SequencerGrouping::trigger_group(vec![1, 2, 3, 4, 5, 6], 20, 3));
+		System::assert_last_event(RuntimeEvent::SequencerGrouping(Event::SequencerGroupUpdated {
+			starting_block: 20,
+			round_index: 3,
+		}));
+		println!("Group Members: {:?}", GroupMembers::<Test>::get());
+
+		let result = SequencerGrouping::get_group_ids(1);
+		assert_eq!(result, vec![0, 2]);
+		let result = SequencerGrouping::get_group_ids(2);
+		assert_eq!(result, vec![1]);
 	});
 }
