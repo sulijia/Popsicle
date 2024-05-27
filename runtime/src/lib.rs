@@ -577,6 +577,8 @@ impl pallet_sequencer_grouping::Config for Runtime {
 	type MaxGroupSize = ConstU32<100>;
 	type MaxGroupNumber = ConstU32<100>;
 	type Randomness = SimpleRandomness<Self>;
+	type MaxLengthIP = ConstU32<15>;
+	type MaxRunningAPP = ConstU32<10>;
 }
 
 parameter_types! {
