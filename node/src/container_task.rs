@@ -539,7 +539,7 @@ async fn processor_task(
 		)
 		.await;
 		log::info!("start processor result:{:?}", result);
-		RunStatus::Downloaded
+		RunStatus::Running
 	} else {
 		RunStatus::Pending
 	};
@@ -757,6 +757,49 @@ where
 	}
 }
 
+async fn close_processor_instance(
+	instance: &mut ProcessorInstance,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+	if instance.running == RunStatus::Running {
+		if instance.instance_docker {
+			//reomve docker container
+			if let Some(docker_name) = &instance.instance_docker_name {
+				let kill_result = remove_docker_container(std::str::from_utf8(&docker_name)?).await;
+				log::info!("kill old docker instance of processor:{:?}", kill_result);
+			}
+		} else {
+			if let Some(ref mut old_instance) = &mut instance.instance {
+				old_instance.kill()?;
+				let kill_result = old_instance.wait()?;
+				log::info!("kill old instance of processor:{:?}", kill_result);
+			}
+		}
+	}
+	Ok(())
+}
+async fn filter_processor_instance(
+	processors: &mut HashMap<H256, ProcessorInstance>,
+	processor_infos: &Vec<ProcessorDownloadInfo>,
+) -> Vec<H256> {
+	let mut remove_entrys = Vec::new();
+	{
+		for processor in &mut *processors {
+			let mut find_flag = false;
+			let app_hash = processor.0;
+			for processor_info in processor_infos {
+				if *app_hash == processor_info.app_hash {
+					find_flag = true;
+					break;
+				}
+			}
+			if !find_flag {
+				let _ = close_processor_instance(processor.1).await;
+				remove_entrys.push(*app_hash);
+			}
+		}
+	}
+	remove_entrys
+}
 async fn handle_new_best_parachain_head<P, Block, TBackend>(
 	validation_data: PersistedValidationData,
 	parachain: &P,
@@ -800,6 +843,11 @@ where
 	{
 		let mut running_processors = running_processor.lock().await;
 		let processors = &mut running_processors.processors;
+		// Close the old client before starting the new client
+		let remove_entrys = filter_processor_instance(processors, &processor_infos).await;
+		for remove_entry in remove_entrys {
+			processors.remove_entry(&remove_entry);
+		}
 		for processor_info in processor_infos {
 			let app_hash = processor_info.app_hash;
 			let processor = processors.entry(app_hash).or_insert(ProcessorInstance {
