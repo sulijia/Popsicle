@@ -146,15 +146,20 @@ pub mod pallet {
 
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-		fn on_finalize(_: BlockNumberFor<T>) {
+		fn on_initialize(_n: BlockNumberFor<T>) -> Weight
+		where
+			BlockNumberFor<T>: From<u32>,
+		{
 			let groups = Self::get_groups();
 			log::info!("groups:{:?}", groups);
 
 			let mut inuse_apps = InuseMap::<T>::get();
 			log::info!("inuse_apps:{:?}", inuse_apps);
-
+			let mut read_count = 2;
+			let mut write_count = 0;
 			for group in groups.iter() {
 				let app = GroupAPPMap::<T>::get(group);
+				read_count += 1;
 				match app {
 					Some(_app_id) => {
 						// TODO:alloced app to group,do nothing??
@@ -173,7 +178,7 @@ pub mod pallet {
 								InuseMap::<T>::mutate(|inuses| inuses[index] = true);
 
 								GroupAPPMap::<T>::insert(group, (index + 1) as u32);
-
+								write_count += 2;
 								break;
 							}
 							index += 1;
@@ -185,6 +190,7 @@ pub mod pallet {
 				}
 			}
 			log::info!("inuse_apps:{:?}", inuse_apps);
+			T::DbWeight::get().reads_writes(read_count, write_count)
 		}
 	}
 
@@ -201,8 +207,21 @@ pub mod pallet {
 			let who = ensure_signed(origin)?;
 
 			let old_application_id = NextApplicationID::<T>::get();
+
 			let consensus_app = *consensus_client;
+
 			let batch_app = *batch_client;
+
+			for app_id in 1..old_application_id {
+				let p_app_info = APPInfoMap::<T>::get(app_id);
+				if let Some(app_info) = p_app_info {
+					assert!(
+						(app_info.consensus_client.app_hash != consensus_app.app_hash) &&
+							(app_info.batch_client.app_hash != batch_app.app_hash),
+						"Client with the same hash exist!",
+					);
+				}
+			}
 			APPInfoMap::<T>::insert(
 				old_application_id,
 				APPInfo {
