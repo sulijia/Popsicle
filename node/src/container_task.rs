@@ -240,6 +240,24 @@ async fn start_docker_container(
 	instance.wait()?;
 	Ok(())
 }
+
+// Redirect docker logs to a file
+// docker logs   {container_name}> {log_file} 2>&1
+// docker logs   {container_name}>& {log_file}
+async fn redirect_docker_container_log(
+	container_name: &str,
+	in_args: Vec<&str>,
+	log_file: File,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+	let docker_cmd = format!("logs  {}", container_name);
+	let mut args: Vec<&str> = docker_cmd.split(' ').into_iter().map(|arg| arg).collect();
+	args.extend(in_args);
+	log::info!("=======================args:{:?}", args);
+	let mut instance = Command::new("docker").args(args).stdout(Stdio::from(log_file)).spawn()?;
+	instance.wait()?;
+	Ok(())
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum StartType {
 	SYNC,
